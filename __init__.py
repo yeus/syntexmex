@@ -37,15 +37,6 @@ def register():
 def unregister():
     bpy.utils.unregister_class(UvOperator)
 
-
-def debug_image(img):
-    if img.shape[2]<4:#add alpha channel
-        img = np.pad(img,((0,0),(0,0),(0,1)),constant_values=1)
-    
-    new_tex = bpy.data.images.new("debug", width=img.shape[1], 
-                                       height=img.shape[0])
-    new_tex.pixels[:] = img.flatten()
-
 if __name__ == "__main__":
     #register()
 
