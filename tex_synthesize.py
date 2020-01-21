@@ -37,13 +37,15 @@ import sklearn
 import sklearn.neighbors
 import gc
 import math
-import scipy
+#import scipy
 import shapely
 import shapely.geometry
 
 #consider replacing sklearn KDTree with scipy KDTree
 #https://jakevdp.github.io/blog/2013/04/29/benchmarking-nearest-neighbor-searches-in-python/
-from tqdm import tqdm
+#from tqdm import tqdm
+def tqdm(iterator, *args, **kwargs):
+    return iterator
 
 GB = 1.0/1024/1024/1024 #GB factor
 
@@ -640,7 +642,7 @@ def generate_test_target_with_fill_mask(example):
     return target, mask, verts
 
 
-def fill_area_with_texture(target, mask, verts):
+def fill_area_with_texture(target, verts):
     area = shapely.geometry.Polygon(verts)
     ov = 1 #overlap
     y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
@@ -652,6 +654,27 @@ def fill_area_with_texture(target, mask, verts):
     fill1, fill2, pgimg = synth_patch_tex(bbox, k=1)
     copy_img(target, fill1/255, (x0,y0), bmask)
     return target
+
+def edge_distance(poly, x,y):
+    d = poly.boundary.distance(shapely.geometry.Point(x,y))
+    if poly.contains(shapely.geometry.Point(x,y)): return d
+    else: return -d 
+
+
+def get_poly_levelset(verts):
+    width = 10
+    poly = shapely.geometry.Polygon(verts)
+    poly_box = poly.buffer(+width) #add two pixels on the container
+    bbox = poly_box.bounds
+    minx, miny, maxx, maxy = bbox_px = np.round(np.array(bbox)).astype(int)
+    w,h = maxx - minx, maxy-miny
+
+
+    bbcoords = itertools.product(range(miny,maxy), range(minx, maxx))
+    levelset = np.array([edge_distance(poly,x,y) for y,x in bbcoords]).reshape(h,w)
+    #normalize levelset:
+    #levelset = np.maximum(levelset/levelset.max(),0.0)
+    return levelset, bbox_px
 
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
@@ -681,7 +704,7 @@ if __name__ == "__main__":
     #lower brightnss of bounding box for debugging ppurposes
     y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(verts).bounds).astype(int)
     target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-    target1 = fill_area_with_texture(target1, mask, verts)
+    target1 = fill_area_with_texture(target1, verts)
     
     #skimage.io.imshow_collection([target, target2, pgimg, example0, target1, mask])
     skimage.io.imshow_collection([target1])
