@@ -242,7 +242,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #calculate maximum possible patch size for given number of patches and
     rp = res_patch
     pnum = max_co.prod()
-    mem_limit = 1.0 #GB
+    mem_limit = 3.0 #GB
     
     #check memory consumption for overlap database:
     #single_overlap_memory_horizontal = \
@@ -278,7 +278,6 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         #TODO: maybe save the coordinates of the overlaps in a second database
         #TODO: augmented patches(mirrored, )
         #TODO: check memory consumption of patch overlaps
-        print("extracting overlaps")
         #TODO: if memory consumption reaches a certain thresold, lower resolution
         #      of overlap databases (this can be done in multiple ways:
         #   - only take patches from every nth pixel,
@@ -287,8 +286,6 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         #   - lower the reoslution of the original image but later keep the 
         #     original rsolution when stitching it back together
         #   - take a random sample of patches from the original source image
-        print("init kdtree1")
-        l = []
         # TODO: add patch augmentation mirroring, rotaton
         #       the problem here is: when augmenting horiz. or vert. 
         #       images, the "combined" would becom very large
@@ -303,6 +300,8 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         #       whatever by analyzing the index module by the number of 
         #       augentations
         #lm = []
+        print("init kdtree1")
+        l = []
         for x,y in tqdm(np.ndindex(*max_co), "overlaps_left"):
             ov = example[y:y+rp[1],x:x+overlap[0]]
             l.append(ov.flatten())
@@ -311,17 +310,13 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
 
         l = sklearn.neighbors.KDTree(np.array(l), metric='l2')
         #lm = sklearn.neighbors.KDTree(np.array(lm), metric='l2')
-        
-        gc.collect()
         print("init kdtree2")
         t = np.ascontiguousarray([example[y:y+overlap[1],x:x+rp[0]].flatten() 
                 for x,y in tqdm(np.ndindex(*max_co), "overlaps_right")])
         t = sklearn.neighbors.KDTree(t, metric='l2')    
         print("init kdtree3")
-        gc.collect()
         lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
                                                 t.get_arrays()[0])), metric='l2')     
-        gc.collect()
         #TODO: check memory consumption of KDTrees
         #sklearn.neighbors.KDTree.valid_metrics
         #ov_db = [sklearn.neighbors.KDTree(i, metric='euclidean') for i in (ov_l, ov_t, ov_lt)]
@@ -578,7 +573,7 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
 
     return target, tas
 
-def synth_patch_tex(target, k=5): 
+def synth_patch_tex(target, example0, k=5): 
     #max_pixels basically defines whats possible with the avialable 
     # memory & CPU power 256x256 has proved to be effective on modern systems
     max_pixels = 256*256 
@@ -593,8 +588,9 @@ def synth_patch_tex(target, k=5):
         #example = skimage.transform.resize(example0, (256,256),
                                             anti_aliasing=True,
                                             multichannel=True,
-                                            preserve_range=True).astype(np.uint8)
+                                            preserve_range=True)#.astype(np.uint8)
         #search_res = example.shape[:2]
+    else: example = example0
 
     patch_ratio = 0.3 #size of patches in comparison with original
     res_patch2 = int(min(example.shape[:2])*patch_ratio)
@@ -642,18 +638,11 @@ def generate_test_target_with_fill_mask(example):
     return target, mask, verts
 
 
-def fill_area_with_texture(target, verts):
-    area = shapely.geometry.Polygon(verts)
-    ov = 1 #overlap
-    y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
-    bbox = target[y0:y1,x0:x1]
-    bmask = mask[y0:y1,x0:x1]>0
-    #bmask2 = mask[y0:y1,x0:x1]>0
-    #area.boundary.buffer(100)
-    
-    fill1, fill2, pgimg = synth_patch_tex(bbox, k=1)
-    copy_img(target, fill1/255, (x0,y0), bmask)
-    return target
+def draw_polygon_mask(verts, size):
+    rr,cc = skimage.draw.polygon(*verts.T)
+    mask = np.zeros(size)
+    mask[rr,cc]=1.0
+    return mask
 
 def edge_distance(poly, x,y):
     d = poly.boundary.distance(shapely.geometry.Point(x,y))
@@ -661,8 +650,7 @@ def edge_distance(poly, x,y):
     else: return -d 
 
 
-def get_poly_levelset(verts):
-    width = 10
+def get_poly_levelset(verts, width=10):
     poly = shapely.geometry.Polygon(verts)
     poly_box = poly.buffer(+width) #add two pixels on the container
     bbox = poly_box.bounds
@@ -676,9 +664,30 @@ def get_poly_levelset(verts):
     #levelset = np.maximum(levelset/levelset.max(),0.0)
     return levelset, bbox_px
 
+def fill_area_with_texture(target, example0, verts):
+    area = shapely.geometry.Polygon(verts)
+    ov = 1 #overlap
+    y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
+    print("create levelset")
+    #levelset, (minx, miny, maxx, maxy) = get_poly_levelset(verts, width=ov)
+    bbox = target[y0:y1,x0:x1]
+    #bmask = levelset>0
+    mask = draw_polygon_mask(verts,target.shape[:2])
+    bmask = mask[y0:y1,x0:x1]>0
+    #bmask2 = mask[y0:y1,x0:x1]>0
+    #area.boundary.buffer(100)
+    
+    print("synthesize texture")
+    fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1)
+    copy_img(target, fill1, (x0,y0), bmask)
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+
+    return target, fill1, fill2, pgimg
+
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
+    example0 = example0/255
     #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
@@ -699,15 +708,16 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([example])
     
     
-    target1, mask, verts = generate_test_target_with_fill_mask(example0)
+    target1, _, verts = generate_test_target_with_fill_mask(example0)
 
     #lower brightnss of bounding box for debugging ppurposes
     y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(verts).bounds).astype(int)
     target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-    target1 = fill_area_with_texture(target1, verts)
+    target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, verts)
     
     #skimage.io.imshow_collection([target, target2, pgimg, example0, target1, mask])
-    skimage.io.imshow_collection([target1])
+    skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
+    skimage.io.imshow_collection([example0])
     skimage.io.imsave("debug/synth.jpg", target1[...,:3])
     
     #analyze resulting patchgrid (og): 
