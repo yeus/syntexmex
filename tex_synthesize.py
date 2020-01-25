@@ -626,16 +626,22 @@ def synth_patch_tex(target, example0, k=5):
 
 #create test-target to fill with mask:
 def generate_test_target_with_fill_mask(example):
-    target = example.copy()/255
+    target = example.copy()
     target[...,3]=1.0
     
-    verts = np.array(((0.1,0.1),(0.9,0.2),(0.8,0.7),(0.3,0.4)))
-    verts = np.round(verts * target.shape[:2]).astype(int)
-    rr,cc = skimage.draw.polygon(*verts.T)
-    mask = np.zeros(target.shape[:2])
-    mask[rr,cc]=1.0
-    target[rr,cc]=(1,0,0,1)
-    return target, mask, verts
+    verts = [np.array(((0.1,0.1),(0.4,0.15),(0.41,0.4),(0.2,0.38))),
+            np.array(((0.5,0.55),(0.85,0.53),(0.8,0.7),(0.51,0.71)))]
+    masks = []
+    pxverts = []
+    for v in verts:
+        pxverts.append(np.round(v * target.shape[:2]).astype(int))
+        rr,cc = skimage.draw.polygon(*v.T)
+        mask = np.zeros(target.shape[:2])
+        mask[rr,cc]=1.0
+        target[rr,cc]=(1,0,0,1)
+        masks.append(mask)
+
+    return target, mask, pxverts
 
 
 def draw_polygon_mask(verts, size):
@@ -711,13 +717,15 @@ if __name__ == "__main__":
     target1, _, verts = generate_test_target_with_fill_mask(example0)
 
     #lower brightnss of bounding box for debugging ppurposes
-    y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(verts).bounds).astype(int)
-    target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-    target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, verts)
+    for v in verts[:]:
+        y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
+        target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
+        target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
     
     #skimage.io.imshow_collection([target, target2, pgimg, example0, target1, mask])
-    skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
-    skimage.io.imshow_collection([example0])
+    #skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
+    skimage.io.imshow_collection([target1])
+    #skimage.io.imshow_collection([example0])
     skimage.io.imsave("debug/synth.jpg", target1[...,:3])
     
     #analyze resulting patchgrid (og): 
