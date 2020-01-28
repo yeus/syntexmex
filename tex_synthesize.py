@@ -245,6 +245,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     mem_limit = 3.0 #GB
     
     #check memory consumption for overlap database:
+    #TODO: check memory consumption instructions from sklearn webpage
     #single_overlap_memory_horizontal = \
     #    overlap[0] * res_patch[1] * ch * cellsize  #in byte
     #single_overlap_memory_vertical = \
@@ -269,54 +270,46 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     
     #TODO: build my own search algorithm which doesn't consume as much memory
     # and can find things in an image much quicker
-
+   #TODO: the "overlaps" are the same for left & right and top & bottom
+    #      patch generation can be completly left out as they can be
+    #      taken directly from the texture. For the search, only the
+    #      overlaps are important. 
+    #TODO: maybe save the coordinates of the overlaps in a second database
+    #TODO: augmented patches(mirrored, )
+    #TODO: check memory consumption of patch overlaps
+    #TODO: if memory consumption reaches a certain thresold, lower resolution
+    #      of overlap databases (this can be done in multiple ways:
+    #   - only take patches from every nth pixel,
+    #   - take overlaps with 1/k the resolution of the original in the database)
+    #   - use smaller patch sizes
+    #   - lower the reoslution of the original image but later keep the 
+    #     original rsolution when stitching it back together
+    #   - take a random sample of patches from the original source image
+    # TODO: add patch augmentation mirroring, rotaton
+    #       the problem here is: when augmenting horiz. or vert. 
+    #       images, the "combined" would becom very large
+    #       basically squared. so if we mirror vert. overlaps,
+    #       only horizontally, we also have twice as many combined.
+    #       If we mirror vertically & horozontally we have 3 times as
+    #       many (all data).
+    #       If we also mirror horiz. overlaps in th same way we have
+    #       3x3 = 9x as much data in combined and 3+3=6 times as much in
+    #       vert. or horiz.
+    #       we can find out whether something is mirrored, rotated or 
+    #       whatever by analyzing the index module by the number of 
+    #       augentations
+    #lm = []
     try:        
-        #TODO: the "overlaps" are the same for left & right and top & bottom
-        #      patch generation can be completly left out as they can be
-        #      taken directly from the texture. For the search, only the
-        #      overlaps are important. 
-        #TODO: maybe save the coordinates of the overlaps in a second database
-        #TODO: augmented patches(mirrored, )
-        #TODO: check memory consumption of patch overlaps
-        #TODO: if memory consumption reaches a certain thresold, lower resolution
-        #      of overlap databases (this can be done in multiple ways:
-        #   - only take patches from every nth pixel,
-        #   - take overlaps with 1/k the resolution of the original in the database)
-        #   - use smaller patch sizes
-        #   - lower the reoslution of the original image but later keep the 
-        #     original rsolution when stitching it back together
-        #   - take a random sample of patches from the original source image
-        # TODO: add patch augmentation mirroring, rotaton
-        #       the problem here is: when augmenting horiz. or vert. 
-        #       images, the "combined" would becom very large
-        #       basically squared. so if we mirror vert. overlaps,
-        #       only horizontally, we also have twice as many combined.
-        #       If we mirror vertically & horozontally we have 3 times as
-        #       many (all data).
-        #       If we also mirror horiz. overlaps in th same way we have
-        #       3x3 = 9x as much data in combined and 3+3=6 times as much in
-        #       vert. or horiz.
-        #       we can find out whether something is mirrored, rotated or 
-        #       whatever by analyzing the index module by the number of 
-        #       augentations
-        #lm = []
         print("init kdtree1")
-        l = []
-        for x,y in tqdm(np.ndindex(*max_co), "overlaps_left"):
-            ov = example[y:y+rp[1],x:x+overlap[0]]
-            l.append(ov.flatten())
-            #lm.append(np.flip(ov, axis=1).flatten()) #mirror horiz.
-            #l.append(np.flip(ov, axis=0)) #mirror vert.
-
-        l = sklearn.neighbors.KDTree(np.array(l), metric='l2')
-        #lm = sklearn.neighbors.KDTree(np.array(lm), metric='l2')
+        l = create_patch_data(example, (rp[1], overlap[0]), max_co)
+        l = sklearn.neighbors.KDTree(l, metric='l2')
         print("init kdtree2")
-        t = np.ascontiguousarray([example[y:y+overlap[1],x:x+rp[0]].flatten() 
-                for x,y in tqdm(np.ndindex(*max_co), "overlaps_right")])
+        t = create_patch_data(example, (overlap[1],rp[0]), max_co)
         t = sklearn.neighbors.KDTree(t, metric='l2')    
         print("init kdtree3")
         lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
-                                                t.get_arrays()[0])), metric='l2')     
+                                                t.get_arrays()[0])),
+                                      metric='l2')     
         #TODO: check memory consumption of KDTrees
         #sklearn.neighbors.KDTree.valid_metrics
         #ov_db = [sklearn.neighbors.KDTree(i, metric='euclidean') for i in (ov_l, ov_t, ov_lt)]
@@ -332,15 +325,8 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     # initialize KDTrees for example)
     # or put the data of the KDtree on them so that they take ob the same memory space
 
-    def idx2co(idx, max_co):
-        x = int(idx/max_co[1])
-        y = idx - x * max_co[1]
-        return x,y
-
     pg = np.full(shape=(*res_grid,2), fill_value=-1, dtype=int)
     pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
-
-    # %% synthesize first row & column
 
     #TODO: synthesize an arbitrary pic with the overlap database generated from example
     # but using a different source texture to "mix" two textures
@@ -420,6 +406,22 @@ def minimum_error_boundary_cut(overlaps, direction):
       
     if direction=="v": return m.T
     else: return m
+
+def create_patch_data(example, res_patch, max_co):
+    """max_co is needed in the case where only overlap
+    areas of patches are of interest. In this case we want
+    the overlap areas to not extend beyond the area of 
+    a contiguos patch
+    """
+    rp = res_patch
+    data = np.ascontiguousarray([example[y:y+rp[0],x:x+rp[1]].flatten() 
+        for x,y in tqdm(np.ndindex(*max_co), "create_patch_data")])
+    return data
+
+def idx2co(idx, max_co):
+    x = int(idx/max_co[1])
+    y = idx - x * max_co[1]
+    return x,y
 
 #create patches
 def gen_patches(image, res_patch):
