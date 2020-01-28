@@ -163,7 +163,7 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         #if (ix, iy) == (3,2): break
         x = ix * rpg[1]
         y = iy * rpg[0]
-        x0,y0 = pa_coords = pg[iy,ix] #get coords of patch in example texture
+        y0,x0 = pa_coords = pg[iy,ix] #get coords of patch in example texture
         
         #TODO: searching new patches based on the already existing image also
         #      helps when having all sorts of constraints
@@ -228,7 +228,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     """
     
     res_patch = np.array(res_patch).astype(int)
-    res_ex = example.shape[:2][::-1]
+    res_ex = example.shape[:2]
     #TODO: decrease overlap to mitigate memory_problems
     max_co = res_ex - res_patch
     ch = example.shape[-1]
@@ -301,10 +301,10 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #lm = []
     try:        
         print("init kdtree1")
-        l = create_patch_data(example, (rp[1], overlap[0]), max_co)
+        l = create_patch_data(example, (rp[0], overlap[1]), max_co)
         l = sklearn.neighbors.KDTree(l, metric='l2')
         print("init kdtree2")
-        t = create_patch_data(example, (overlap[1],rp[0]), max_co)
+        t = create_patch_data(example, (overlap[0],rp[1]), max_co)
         t = sklearn.neighbors.KDTree(t, metric='l2')    
         print("init kdtree3")
         lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
@@ -332,10 +332,10 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     # but using a different source texture to "mix" two textures
     
     for i in tqdm(range(1,res_grid[1]),"find matches: first row"): 
-        x,y = pg[0,i-1]
+        y,x = pg[0,i-1]
         #patch = example[y:y+rp[1],x:x+rp[0]]
         #((patches[idx] - patch)**2).sum() == 0 #they have to be the same!
-        ovl = example[y:y+rp[1],x:x+rp[0]][:,-overlap[0]:].flatten()  
+        ovl = example[y:y+rp[0],x:x+rp[1]][:,-overlap[0]:].flatten()  
         #ov_idx = idx + (res_patch[0] - overlap[0])*max_co[1]#move towards the right by res_grid
         #(ovl-ov_l[ov_idx])
         new_idx = find_match(ovl, l , tol=tol, k=k)
@@ -343,7 +343,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         pg[0,i] = idx2co(new_idx, max_co)
 
     for i in tqdm(range(1,res_grid[0]),"find matches: first column"): 
-        x,y = pg[i-1,0]
+        y,x = pg[i-1,0]
         ovt = example[y:y+rp[1],x:x+rp[0]][-overlap[1]:,:].flatten()   
         pg[i,0] = idx2co(find_match(ovt, t, tol=tol, k=k), max_co)
 
@@ -352,10 +352,10 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
                                         range(1,res_grid[0])),
                       total = (res_grid[1]-1)*(res_grid[0]-1),
                       desc = "find matches: complete grid"):
-        x,y = pg[iy,ix-1]
-        ovl = example[y:y+rp[1],x:x+rp[0]][:,-overlap[0]:].flatten()
-        x,y = pg[iy-1,ix]
-        ovt = example[y:y+rp[1],x:x+rp[0]][-overlap[1]:,:].flatten()   
+        y,x = pg[iy,ix-1]
+        ovl = example[y:y+rp[0],x:x+rp[1]][:,-overlap[1]:].flatten()
+        y,x = pg[iy-1,ix]
+        ovt = example[y:y+rp[0],x:x+rp[1]][-overlap[0]:,:].flatten()   
         ovlt = np.hstack((ovl, ovt))
         pg[iy,ix] = idx2co(find_match(ovlt, lt, tol = tol, k=k), max_co)
         
@@ -416,13 +416,13 @@ def create_patch_data(example, res_patch, max_co=None):
     if max_co is None: max_co = np.array(example.shape[:2]) - res_patch
     rp = res_patch
     data = np.ascontiguousarray([example[y:y+rp[0],x:x+rp[1]].flatten() 
-        for x,y in tqdm(np.ndindex(*max_co), "create_patch_data")])
+        for y,x in tqdm(np.ndindex(*max_co), "create_patch_data")])
     return data
 
 def idx2co(idx, max_co):
-    x = int(idx/max_co[1])
-    y = idx - x * max_co[1]
-    return x,y
+    yp = int(idx/max_co[1])
+    xp = idx - yp * max_co[1]
+    return yp,xp
 
 #create patches
 def gen_patches(image, res_patch):
@@ -602,11 +602,11 @@ def normalize_picture(example0):
     
     return example, scaling
 
-def create_patch_params(example):
+def create_patch_params(example, scaling):
     patch_ratio = 0.3 #size of patches in comparison with original
     res_patch2 = int(min(example.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
-    res_patch = np.round(res_patch2*scaling)
+    res_patch = np.round(res_patch2*scaling).astype(int)
     overlap = np.ceil((res_patch/6)).astype(int)    
     res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
     overlap2 = np.round(overlap/scaling).astype(int)
@@ -617,7 +617,7 @@ def synth_patch_tex(target, example0, k=5):
 
     example, scaling = normalize_picture(example0)
     res_target = target.shape[:2]
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example)
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example, scaling)
     res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
     
     print(f"patch_size: {res_patch2}\ninitial scaling: {scaling}, ")
@@ -745,11 +745,13 @@ if __name__ == "__main__":
             target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
     
     tosynth = target1[y0:y1,x0:x1]
+    res_target = tosynth.shape[:2]
     
     example, scaling = normalize_picture(example0)
-    #res_patch = 
-    #data = create_patch_data(example, res_patch = res_patch)
-    
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example, scaling)
+    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
+    data = create_patch_data(example, res_patch = res_patch)
+    tree = sklearn.neighbors.KDTree(data, metric='l2')
     
     
     skimage.io.imshow_collection([tosynth])
