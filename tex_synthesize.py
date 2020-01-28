@@ -407,12 +407,13 @@ def minimum_error_boundary_cut(overlaps, direction):
     if direction=="v": return m.T
     else: return m
 
-def create_patch_data(example, res_patch, max_co):
+def create_patch_data(example, res_patch, max_co=None):
     """max_co is needed in the case where only overlap
     areas of patches are of interest. In this case we want
     the overlap areas to not extend beyond the area of 
     a contiguos patch
     """
+    if max_co is None: max_co = np.array(example.shape[:2]) - res_patch
     rp = res_patch
     data = np.ascontiguousarray([example[y:y+rp[0],x:x+rp[1]].flatten() 
         for x,y in tqdm(np.ndindex(*max_co), "create_patch_data")])
@@ -601,21 +602,23 @@ def normalize_picture(example0):
     
     return example, scaling
 
-def synth_patch_tex(target, example0, k=5): 
-
-    example, scaling = normalize_picture(example0)
-    res_target = target.shape[:2]
+def create_patch_params(example):
     patch_ratio = 0.3 #size of patches in comparison with original
     res_patch2 = int(min(example.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
     res_patch = np.round(res_patch2*scaling)
-    overlap = np.ceil((res_patch/6)).astype(int)
-
-    #transform pg coordinates into original source texture
+    overlap = np.ceil((res_patch/6)).astype(int)    
     res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
     overlap2 = np.round(overlap/scaling).astype(int)
-    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
+    
+    return res_patch, res_patch2, overlap, overlap2
 
+def synth_patch_tex(target, example0, k=5): 
+
+    example, scaling = normalize_picture(example0)
+    res_target = target.shape[:2]
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example)
+    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
     
     print(f"patch_size: {res_patch2}\ninitial scaling: {scaling}, ")
     
@@ -625,6 +628,7 @@ def synth_patch_tex(target, example0, k=5):
     pgimage = pg/pg.max((0,1))
     pgimage = np.dstack((pgimage,np.zeros(pgimage.shape[:2])))
 
+    #transform pg coordinates into original source texture
     pg2 = np.round(pg / scaling).astype(int)
  
     target = transform_patch_grid_to_tex(None, res_patch2, pg2, example0, 
@@ -742,7 +746,9 @@ if __name__ == "__main__":
     
     tosynth = target1[y0:y1,x0:x1]
     
-    
+    example, scaling = normalize_picture(example0)
+    #res_patch = 
+    #data = create_patch_data(example, res_patch = res_patch)
     
     
     
