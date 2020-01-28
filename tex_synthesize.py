@@ -465,10 +465,16 @@ def create_mask_tree(img, kind="causal5x3"):
         mask = np.ones(mask_res, dtype=bool)
         mask_center = (2,2) #starting index from 0
         mask[mask_center]=False
+    elif kind == "noncausal3x3": #generate non-causal mask:
+        mask_res = (3,3)
+        mask = np.ones(mask_res, dtype=bool)
+        mask_center = (1,1) #starting index from 0
     else: raise ValueError(f"kind: {kind} is unknown")
         
+    print("generating patches")
     m_patches, max_co, idx2co = gen_patches_from_mask(img,mask)
     #build local neighbourdhood KDTree for pyramid level
+    print("generating tree from patches")
     tree = sklearn.neighbors.KDTree(m_patches, metric='l2')
     return tree, mask, mask_center, idx2co
 
@@ -573,13 +579,12 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
 
     return target, tas
 
-def synth_patch_tex(target, example0, k=5): 
+def normalize_picture(example0):
     #max_pixels basically defines whats possible with the avialable 
     # memory & CPU power 256x256 has proved to be effective on modern systems
     max_pixels = 256*256 
     ex_pixels = np.prod(example0.shape[:2])
     scaling = 1.0
-    res_target = target.shape[:2]
     if max_pixels < ex_pixels:
         px_ratio = ex_pixels/max_pixels
         scaling = 1/math.sqrt(px_ratio)
@@ -591,7 +596,13 @@ def synth_patch_tex(target, example0, k=5):
                                             preserve_range=True)#.astype(np.uint8)
         #search_res = example.shape[:2]
     else: example = example0
+    
+    return example, scaling
 
+def synth_patch_tex(target, example0, k=5): 
+
+    example, scaling = normalize_picture(example0)
+    res_target = target.shape[:2]
     patch_ratio = 0.3 #size of patches in comparison with original
     res_patch2 = int(min(example.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
@@ -674,7 +685,7 @@ def fill_area_with_texture(target, example0, verts):
     area = shapely.geometry.Polygon(verts)
     ov = 1 #overlap
     y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
-    print("create levelset")
+    #print("create levelset")
     #levelset, (minx, miny, maxx, maxy) = get_poly_levelset(verts, width=ov)
     bbox = target[y0:y1,x0:x1]
     #bmask = levelset>0
@@ -694,6 +705,8 @@ if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
     example0 = example0/255
+    #example0 = skimage.transform.resize(example0, (500,1000))
+    example = example0#skimage.transform.rescale(example0, 0.25, multichannel=True)
     #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
@@ -713,18 +726,31 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([*tas])
     #skimage.io.imshow_collection([example])
     
-    
-    target1, _, verts = generate_test_target_with_fill_mask(example0)
+    target1, _, verts = generate_test_target_with_fill_mask(example)
+
+    #target, target2, pgimage = synth_patch_tex(target1,example0,k=1)
+    #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
-    for v in verts[:]:
-        y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
-        target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-        target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
+    if True:
+        for v in verts[:1]:
+            y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
+            target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
+            target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
+    
+    tosynth = target1[y0:y1,x0:x1]
+    
+    
+    
+    
+    
+    skimage.io.imshow_collection([tosynth])
+    
+    #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
     #skimage.io.imshow_collection([target, target2, pgimg, example0, target1, mask])
     #skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
-    skimage.io.imshow_collection([target1])
+    #skimage.io.imshow_collection([target1])
     #skimage.io.imshow_collection([example0])
     skimage.io.imsave("debug/synth.jpg", target1[...,:3])
     
