@@ -176,26 +176,49 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         if all(pa_coords == (-1,-1)): # --> a part of the grid that is not assigned
             pa = np.zeros((res_patch[0],res_patch[1],4))
             pa[:,:,:]=(0, 0.31, 0.22, 1) #TODO: make different fill colors possible
-        else:
-            pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-
+        
         if use_quilting:
-            #get corresponding ovelaps:
-            ov_h = target[y:y+rpg[0]+overlap[0],x:x+overlap[1]], pa[:,:overlap[1]]
-            ov_v= target[y:y+overlap[0],x:x+rpg[1]+overlap[1]], pa[:overlap[0],:]
-            if iy==0 and ix==0: pass
+            #get corresponding overlaps:
+            if iy==0 and ix==0: pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
             elif iy==0: #the last column doesn't need the optimal cut
-                pa = create_optimal_patch_2(pa,"h", ov_h, overlap)
+                pa = optimal_patch(target, example, res_patch, (overlap[1],0,0,0), (y0,x0), (y,x))
             elif ix==0: #the last row doesn't need the optimal cut
-                pa = create_optimal_patch_2(pa,"v", ov_v, overlap)
+                pa = optimal_patch(target, example, res_patch, (0,overlap[0],0,0), (y0,x0), (y,x))
             else:
-                pa = create_optimal_patch_3(pa, ov_h, ov_v, overlap)
+                pa = optimal_patch(target, example, res_patch, (overlap[1],overlap[0],0,0), (y0,x0), (y,x))
                 #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
+        else: pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
             
         copy_img(target, pa, (x,y))
         #print((ix,iy),pg[iy,ix])
         
     return target
+
+def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
+    """
+    this creates optimal patches for reacangular patches with overlaps
+    given in "overlap" with indics as follows:
+          2
+        -----
+       1|   |3
+        -----
+          4
+         
+    the number of in "overlap" specifies the size of the overlap in pixels
+    TODO: expand to arbitrarily sized boundaries
+    """
+    y,x = pos_ta
+    y0,x0 = pos_ex
+    ov = overlap
+    pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
+    if ov[0]>0: ov_h = target[y:y+res_patch[0],x:x+overlap[0]], pa[:,:overlap[0]]
+    if ov[1]>0: ov_v = target[y:y+overlap[1],x:x+res_patch[1]], pa[:overlap[1],:]
+
+    if (ov[0] > 0) and (ov[1]==0): pa = create_optimal_patch_2(pa,"h", ov_h, overlap)
+    elif (ov[0] == 0) and (ov[1]>0): pa = create_optimal_patch_2(pa,"v", ov_v, overlap)
+    else: pa = create_optimal_patch_3(pa, ov_h, ov_v, overlap)
+    
+    return pa
 
 def find_match(data, db, tol = 0.1, k=5):
     #get a horizonal overlap match
@@ -605,7 +628,7 @@ def normalize_picture(example0, max_pixels = 256*256):
     return example, scaling
 
 def create_patch_params(example0, scaling, 
-                        overlap_ratio = 1/6, patch_ratio = 0.1):
+                        overlap_ratio = 1/6, patch_ratio = 0.05):
     """patch_ratio = #size of patches in comparison with original
     """
     res_patch2 = int(min(example0.shape[:2])*patch_ratio)
@@ -740,7 +763,9 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
-    if True:
+    if False:
+        np.random.seed(10)
+        random.seed(20)
         target1, _, verts = generate_test_target_with_fill_mask(example)
         for v in verts[:1]:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
@@ -750,8 +775,8 @@ if __name__ == "__main__":
     edge = 50
     target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
     target0_start = target0.copy()
-    lib_size = 256*256
-    patch_ratio = 0.025
+    lib_size = 128*128
+    patch_ratio = 0.05
     example, scaling = normalize_picture(example0, lib_size)
     #resize target to the same scale as the scaled example
     target = skimage.transform.rescale(target0, scaling,
@@ -784,7 +809,6 @@ if __name__ == "__main__":
         #insert into small target picture
         copy_img(target, patch, (xp, yp))
     
-        
         co_p2 = np.round(co_p / scaling).astype(int)
         patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
         copy_img(target0, patch2, np.round(co_target/scaling).astype(int)[::-1])
@@ -797,6 +821,7 @@ if __name__ == "__main__":
             break
     
     skimage.io.imshow_collection([target0_start,target0,target, target_start])
+    #skimage.io.imshow_collection([target0])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
@@ -804,7 +829,7 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
     #skimage.io.imshow_collection([target1])
     #skimage.io.imshow_collection([example0])
-    skimage.io.imsave("debug/synth.jpg", target1[...,:3])
+    skimage.io.imsave("debug/synth.jpg", target0[...,:3])
     
     #analyze resulting patchgrid (og): 
     #import pandas as pd
