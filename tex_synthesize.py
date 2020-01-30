@@ -104,38 +104,6 @@ def mask_blend(m, img1, img2):
     boundary = b1+b2
     return boundary
 
-#TODO: replace overlap with the actual patch
-def create_optimal_patch_2(pa, direction, ov, overlap):
-    """
-    this create an optimal boundary patch out of 2 patches
-    where one overlapping region
-    is replace by an optimal boundary with the second patch
-    """
-    m = minimum_error_boundary_cut(ov, direction)
-    boundary = mask_blend(m, ov[0], ov[1])
-    if direction=="h": pa[:,:overlap[0]] = boundary
-    else:  pa[:overlap[1],:] = boundary = boundary
-    return pa
-
-def create_optimal_patch_3(pa, ov_h, ov_v, overlap):
-    """
-    this create an optimal patch out of 1 tile with
-    2 border tiles where two overlapping regions
-    are replaced by an optimal boundary with fro the other patches
-    """
-    m_h = minimum_error_boundary_cut(ov_h, "h")
-    m_v = minimum_error_boundary_cut(ov_v, "v")
-    corner = np.minimum(m_h[:overlap[1], :overlap[0]],m_v[:overlap[1], :overlap[0]])
-    m_h[:overlap[1], :overlap[0]] = corner
-    m_v[:overlap[1], :overlap[0]] = corner
-    b_h = mask_blend(m_h, ov_h[0],ov_h[1])
-    b_v = mask_blend(m_v, ov_v[0],ov_v[1])
-    pa[:,:overlap[0]] = b_h
-    pa[:overlap[1],:] = b_v
-    return pa
-    #TODO: copy corner separatly to save double-work (might not be worth
-    #       the minimal gain in speed though)
-
 @timing
 def transform_patch_grid_to_tex(res, res_patch, pg, example, 
                                 overlap,
@@ -194,6 +162,38 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         
     return target
 
+#TODO: replace overlap with the actual patch
+def create_optimal_patch_2(pa, direction, ov, overlap):
+    """
+    this create an optimal boundary patch out of 2 patches
+    where one overlapping region
+    is replace by an optimal boundary with the second patch
+    """
+    m = minimum_error_boundary_cut(ov, direction)
+    boundary = mask_blend(m, ov[0], ov[1])
+    if direction=="h": pa[:,:overlap[0]] = boundary
+    else:  pa[:overlap[1],:] = boundary = boundary
+    return pa
+
+def create_optimal_patch_3(pa, ov_h, ov_v, overlap):
+    """
+    this create an optimal patch out of 1 tile with
+    2 border tiles where two overlapping regions
+    are replaced by an optimal boundary with fro the other patches
+    """
+    m_h = minimum_error_boundary_cut(ov_h, "h")
+    m_v = minimum_error_boundary_cut(ov_v, "v")
+    corner = np.minimum(m_h[:overlap[1], :overlap[0]],m_v[:overlap[1], :overlap[0]])
+    m_h[:overlap[1], :overlap[0]] = corner
+    m_v[:overlap[1], :overlap[0]] = corner
+    b_h = mask_blend(m_h, ov_h[0],ov_h[1])
+    b_v = mask_blend(m_v, ov_v[0],ov_v[1])
+    pa[:,:overlap[0]] = b_h
+    pa[:overlap[1],:] = b_v
+    return pa
+    #TODO: copy corner separatly to save double-work (might not be worth
+    #       the minimal gain in speed though)
+
 def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     """
     this creates optimal patches for reacangular patches with overlaps
@@ -211,12 +211,15 @@ def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     y0,x0 = pos_ex
     ov = overlap
     pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-    if ov[0]>0: ov_h = target[y:y+res_patch[0],x:x+overlap[0]], pa[:,:overlap[0]]
-    if ov[1]>0: ov_v = target[y:y+overlap[1],x:x+res_patch[1]], pa[:overlap[1],:]
+    if ov[0]>0: ov_l = target[y:y+res_patch[0],x:x+overlap[0]], pa[:,:overlap[0]]
+    if ov[1]>0: ov_t = target[y:y+overlap[1],x:x+res_patch[1]], pa[:overlap[1],:]
+    if ov[2]>0: ov_r = target[y:y+res_patch[0],x+res_patch[1]-overlap[0]:x+res_patch[1]], pa[:,-overlap[0]:]
+    if ov[3]>0: ov_b = target[y+res_patch[0]-overlap[1]:y+res_patch[0],x:x+res_patch[1]], pa[-overlap[1]:,:]
 
-    if (ov[0] > 0) and (ov[1]==0): pa = create_optimal_patch_2(pa,"h", ov_h, overlap)
-    elif (ov[0] == 0) and (ov[1]>0): pa = create_optimal_patch_2(pa,"v", ov_v, overlap)
-    else: pa = create_optimal_patch_3(pa, ov_h, ov_v, overlap)
+    if all(ov): pass
+    elif (ov[0] > 0) and (ov[1]==0): pa = create_optimal_patch_2(pa,"h", ov_l, overlap)
+    elif (ov[0] == 0) and (ov[1]>0): pa = create_optimal_patch_2(pa,"v", ov_t, overlap)
+    else: pa = create_optimal_patch_3(pa, ov_l, ov_t, overlap)
     
     return pa
 
