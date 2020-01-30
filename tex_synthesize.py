@@ -62,6 +62,9 @@ def timing(f):
 def copy_img(target, src, pos, mask=None):
     """
     copy image src to target at pos
+    
+    careful! x & y are switch around here i contrast to other
+    functions of this library. oder: pos=(x,y)
     """
     #TODO: handle border clipping problems
     # - when copying images that exten over "left" and "top" edges
@@ -582,10 +585,9 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
 
     return target, tas
 
-def normalize_picture(example0):
+def normalize_picture(example0, max_pixels = 256*256):
     #max_pixels basically defines whats possible with the avialable 
     # memory & CPU power 256x256 has proved to be effective on modern systems
-    max_pixels = 256*256 
     ex_pixels = np.prod(example0.shape[:2])
     scaling = 1.0
     if max_pixels < ex_pixels:
@@ -602,13 +604,15 @@ def normalize_picture(example0):
     
     return example, scaling
 
-def create_patch_params(example, scaling):
-    patch_ratio = 0.3 #size of patches in comparison with original
-    res_patch2 = int(min(example.shape[:2])*patch_ratio)
+def create_patch_params(example0, scaling, 
+                        overlap_ratio = 1/6, patch_ratio = 0.1):
+    """patch_ratio = #size of patches in comparison with original
+    """
+    res_patch2 = int(min(example0.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
     res_patch = np.round(res_patch2*scaling).astype(int)
-    overlap = np.ceil((res_patch/6)).astype(int)    
-    res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
+    overlap = np.ceil((res_patch*overlap_ratio)).astype(int)    
+    #res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
     overlap2 = np.round(overlap/scaling).astype(int)
     
     return res_patch, res_patch2, overlap, overlap2
@@ -617,7 +621,7 @@ def synth_patch_tex(target, example0, k=5):
 
     example, scaling = normalize_picture(example0)
     res_target = target.shape[:2]
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example, scaling)
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling)
     res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
     
     print(f"patch_size: {res_patch2}\ninitial scaling: {scaling}, ")
@@ -731,30 +735,68 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection(py)
     #skimage.io.imshow_collection([*tas])
     #skimage.io.imshow_collection([example])
-    
-    target1, _, verts = generate_test_target_with_fill_mask(example)
 
     #target, target2, pgimage = synth_patch_tex(target1,example0,k=1)
     #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
     if True:
+        target1, _, verts = generate_test_target_with_fill_mask(example)
         for v in verts[:1]:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
-            target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
+            #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
             target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
     
-    tosynth = target1[y0:y1,x0:x1]
-    res_target = tosynth.shape[:2]
-    
-    example, scaling = normalize_picture(example0)
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example, scaling)
-    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
-    data = create_patch_data(example, res_patch = res_patch)
+    edge = 50
+    target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
+    target0_start = target0.copy()
+    lib_size = 256*256
+    patch_ratio = 0.025
+    example, scaling = normalize_picture(example0, lib_size)
+    #resize target to the same scale as the scaled example
+    target = skimage.transform.rescale(target0, scaling,
+    #example = skimage.transform.resize(example0, (256,256),
+                                        anti_aliasing=True,
+                                        multichannel=True,
+                                        preserve_range=True)#.astype(np.uint8)
+    target_start = target.copy()
+    res_target = target.shape[:2]
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling, 1/6,
+                                                                   patch_ratio)
+    rpg = np.array(res_patch) - overlap
+    res_grid = np.ceil((res_target-overlap)/rpg).astype(int)
+    max_co = np.array(example.shape[:2]) - res_patch
+    data = create_patch_data(example, res_patch, max_co)
     tree = sklearn.neighbors.KDTree(data, metric='l2')
     
+    rp, rp2 = res_patch, res_patch2
+    for coords in np.ndindex(*res_grid):
+        #to get "whole" patches, we need the last row to have the same
+        #border as the target image:
+        yp,xp = co_target = np.minimum(res_target-res_patch,np.array(coords) * rpg)
+
+        search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
+        new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
     
-    skimage.io.imshow_collection([tosynth])
+        #find patch from original image    
+        co_p = np.array(idx2co(new_idx, max_co))
+        patch = example[co_p[0]:co_p[0]+rp[0],co_p[1]:co_p[1]+rp[1]]
+        #insert into small target picture
+        copy_img(target, patch, (xp, yp))
+    
+        
+        co_p2 = np.round(co_p / scaling).astype(int)
+        patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
+        copy_img(target0, patch2, np.round(co_target/scaling).astype(int)[::-1])
+        
+        
+        if False:#coords==(2,0):
+            patch_found = data[new_idx].reshape(*res_patch,4)
+            skimage.io.imshow_collection([patch_found])
+            skimage.io.imshow_collection([search_area, patch, patch2])
+            break
+    
+    skimage.io.imshow_collection([target0_start,target0,target, target_start])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
