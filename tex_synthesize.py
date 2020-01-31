@@ -764,7 +764,7 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
     
     if True:
-        lib_size = 256*256
+        lib_size = 200*200
         patch_ratio = 0.1
         example, scaling = normalize_picture(example0, lib_size)
         #resize target to the same scale as the scaled example
@@ -775,38 +775,31 @@ if __name__ == "__main__":
                                             preserve_range=True)#.astype(np.uint8)
         target_start = target.copy()
         res_target = target.shape[:2]
-        res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling, 1/6,
+        res_target0 = target0.shape[:2]
+        res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling, 1/6,
                                                                        patch_ratio)
-        rpg = np.array(res_patch) - overlap
-        res_grid = np.ceil((res_target-overlap)/rpg).astype(int)
+        rpg0 = np.array(res_patch0) - overlap0
+        res_grid0 = np.ceil((res_target0-overlap0)/rpg0).astype(int)
+        max_co0 = np.array(example0.shape[:2]) - res_patch0
         max_co = np.array(example.shape[:2]) - res_patch
         data = create_patch_data(example, res_patch, max_co)
         tree = sklearn.neighbors.KDTree(data, metric='l2')
         
-        rp, rp2 = res_patch, res_patch2
-        for coords in np.ndindex(*res_grid):
+        rp, rp0 = res_patch, res_patch0
+        for coords in np.ndindex(*res_grid0):
             #to get "whole" patches, we need the last row to have the same
-            #border as the target image:
-            #TODO: we need to "calculate back" the coordinates rom high res to 
-            #low-res and not the other way around as it is right now
-            yp,xp = co_target = np.minimum(res_target-res_patch,np.array(coords) * rpg)
-    
+            #border as the target image thats why we use "minimum":
+            yp0,xp0 = co_target0 = np.minimum(res_target0-res_patch0,np.array(coords) * rpg0)
+            yp,xp = co_target = np.round(co_target0*scaling).astype(int)
+            
             search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
-            new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
-        
+            new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)        
             #find patch from original image    
             co_p = np.array(idx2co(new_idx, max_co))
-            patch = example[co_p[0]:co_p[0]+rp[0],co_p[1]:co_p[1]+rp[1]]
-            #insert into small target picture
-            copy_img(target, patch, (xp, yp))
-        
-            co_p2 = np.round(co_p / scaling).astype(int)
-            co_ta2 = np.round(co_target/scaling).astype(int)
-            #patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
-            #ovs = np.repeat(overlap2,2)
-            ovs = np.r_[overlap2,overlap2]
-            pa, pa0, ta0 = optimal_patch(target0, example0, res_patch2, 
-                                         ovs, co_p2, co_ta2)
+            co_p0 = np.round(co_p / scaling).astype(int)
+            ovs = np.r_[overlap0,0,0]#overlap2]
+            pa, pa0, ta0 = optimal_patch(target0, example0, res_patch0, 
+                                         ovs, co_p0, co_target0)
             #target, example, res_patch, overlap, pos_ex, pos_ta=target0, example0, res_patch2, ovs, co_p2, co_ta2
             
             
@@ -818,7 +811,7 @@ if __name__ == "__main__":
                 #skimage.io.imshow_collection([patch_found])
                 #skimage.io.imshow_collection([search_area, patch, patch2])
                 break
-            copy_img(target0, pa, co_ta2[::-1])
+            copy_img(target0, pa, co_target0[::-1])
     
     
     #skimage.io.imshow_collection([target0_start,target0, target_start,target])
