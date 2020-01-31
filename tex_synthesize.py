@@ -99,10 +99,8 @@ def mask_blend(m, img1, img2):
     mT = np.expand_dims(m,axis=2)
     b1 = img1 * (1 - mT)
     b2 = img2 * mT
-    #b1[:,:,3] = 1
-    #b2[:,:,3] = 1
-    boundary = b1+b2
-    return boundary
+    new_img = b1+b2
+    return new_img
 
 @timing
 def transform_patch_grid_to_tex(res, res_patch, pg, example, 
@@ -113,15 +111,12 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
     """
     #TODO: create a generate- "info" function so that information doesn't have
     # to be exchanged so often
-    
-    res_patch = np.array(res_patch).astype(int)
     #TODO: adaptive overlap (wih larger patch sizes it might not 
     #make enough sense anymore, because textures become too repetetive ...)
     #overlap = np.ceil((res_patch/6)).astype(int)
     #TODO: the overlap can actually be different from the overlap when searching
     # for the images. This might make some things more efficient
     # or we can just generate a standad overlap in all functions
-
 
     ch_num = example.shape[-1]
     
@@ -140,59 +135,49 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         #      helps when having all sorts of constraints
         #TODO: maybe pass a "constraint-error-function" for the search function?
         #TODO: get rid of resolution parameters to make dynamic sized patches
-        #      possible
+        #      possible --> this doesn#t work with a "grid" function
         if all(pa_coords == (-1,-1)): # --> a part of the grid that is not assigned
             pa = np.zeros((res_patch[0],res_patch[1],4))
             pa[:,:,:]=(0, 0.31, 0.22, 1) #TODO: make different fill colors possible
         
-        if use_quilting:
-            #get corresponding overlaps:
-            if iy==0 and ix==0: pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-            elif iy==0: #the last column doesn't need the optimal cut
-                pa = optimal_patch(target, example, res_patch, (overlap[1],0,0,0), (y0,x0), (y,x))
-            elif ix==0: #the last row doesn't need the optimal cut
-                pa = optimal_patch(target, example, res_patch, (0,overlap[0],0,0), (y0,x0), (y,x))
-            else:
-                pa = optimal_patch(target, example, res_patch, (overlap[1],overlap[0],0,0), (y0,x0), (y,x))
-                #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
-        else: pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-            
+        #get corresponding overlaps:
+        if iy==0: ovs=(overlap[1],0,0,0)
+        elif ix==0: ovs=(0,overlap[0],0,0)
+        else: ovs=(overlap[1],overlap[0],0,0)
+        
+        if (iy==0 and ix==0) or (not use_quilting): pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
+        else: pa = optimal_patch(target, example, res_patch, ovs, (y0,x0), (y,x))            
+
+        #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
         copy_img(target, pa, (x,y))
         #print((ix,iy),pg[iy,ix])
         
     return target
 
-#TODO: replace overlap with the actual patch
-def create_optimal_patch_2(pa, direction, ov, overlap):
-    """
-    this create an optimal boundary patch out of 2 patches
-    where one overlapping region
-    is replace by an optimal boundary with the second patch
-    """
-    m = minimum_error_boundary_cut(ov, direction)
-    boundary = mask_blend(m, ov[0], ov[1])
-    if direction=="h": pa[:,:overlap[0]] = boundary
-    else:  pa[:overlap[1],:] = boundary = boundary
-    return pa
+def overlap_slices(overlap):
+    """define slices for overlaps"""
+    ovs = [np.s_[:,:overlap[0]],#left
+           np.s_[:overlap[1],:],#top
+           np.s_[:,-overlap[2]:],#right
+           np.s_[-overlap[3]:,:]]#bottom
+    return ovs
 
-def create_optimal_patch_3(pa, ov_h, ov_v, overlap):
+def create_optimal_patch(pa, ta, overlaps):
     """
-    this create an optimal patch out of 1 tile with
-    2 border tiles where two overlapping regions
-    are replaced by an optimal boundary with fro the other patches
+    this function creates an optimal patch out of 1 tile with
+    given number of border tiles where two overlapping regions
+    are replaced by an optimal boundary from the other patches
     """
-    m_h = minimum_error_boundary_cut(ov_h, "h")
-    m_v = minimum_error_boundary_cut(ov_v, "v")
-    corner = np.minimum(m_h[:overlap[1], :overlap[0]],m_v[:overlap[1], :overlap[0]])
-    m_h[:overlap[1], :overlap[0]] = corner
-    m_v[:overlap[1], :overlap[0]] = corner
-    b_h = mask_blend(m_h, ov_h[0],ov_h[1])
-    b_v = mask_blend(m_v, ov_v[0],ov_v[1])
-    pa[:,:overlap[0]] = b_h
-    pa[:overlap[1],:] = b_v
-    return pa
-    #TODO: copy corner separatly to save double-work (might not be worth
-    #       the minimal gain in speed though)
+    mask = np.ones(pa.shape[:2])
+    ovs = overlap_slices(overlaps)
+    for ov, orient, sl in zip(overlaps,["h","v","h","v"], ovs):
+        if ov>0: #if this boundary is used
+            m = minimum_error_boundary_cut((pa[sl],ta[sl]), orient)
+            mask[sl] = np.minimum(m,mask[sl])
+    
+    new_pa = mask_blend(mask, ta, pa)
+    
+    return new_pa
 
 def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     """
@@ -207,21 +192,13 @@ def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     the number of in "overlap" specifies the size of the overlap in pixels
     TODO: expand to arbitrarily sized boundaries
     """
+    #TODO use np.s_ as indices
     y,x = pos_ta
     y0,x0 = pos_ex
-    ov = overlap
     pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-    if ov[0]>0: ov_l = target[y:y+res_patch[0],x:x+overlap[0]], pa[:,:overlap[0]]
-    if ov[1]>0: ov_t = target[y:y+overlap[1],x:x+res_patch[1]], pa[:overlap[1],:]
-    if ov[2]>0: ov_r = target[y:y+res_patch[0],x+res_patch[1]-overlap[0]:x+res_patch[1]], pa[:,-overlap[0]:]
-    if ov[3]>0: ov_b = target[y+res_patch[0]-overlap[1]:y+res_patch[0],x:x+res_patch[1]], pa[-overlap[1]:,:]
+    ta = target[y:y+res_patch[0],x:x+res_patch[1]]
 
-    if all(ov): pass
-    elif (ov[0] > 0) and (ov[1]==0): pa = create_optimal_patch_2(pa,"h", ov_l, overlap)
-    elif (ov[0] == 0) and (ov[1]>0): pa = create_optimal_patch_2(pa,"v", ov_t, overlap)
-    else: pa = create_optimal_patch_3(pa, ov_l, ov_t, overlap)
-    
-    return pa
+    return create_optimal_patch(pa, ta, overlap)
 
 def find_match(data, db, tol = 0.1, k=5):
     #get a horizonal overlap match
@@ -376,7 +353,6 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         ovt = example[y:y+rp[1],x:x+rp[0]][-overlap[1]:,:].flatten()   
         pg[i,0] = idx2co(find_match(ovt, t, tol=tol, k=k), max_co)
 
-        # %% synthesize rest (combined vertical & horizontal)
     for ix,iy in tqdm(itertools.product(range(1,res_grid[1]), 
                                         range(1,res_grid[0])),
                       total = (res_grid[1]-1)*(res_grid[0]-1),
@@ -395,7 +371,8 @@ def minimum_error_boundary_cut(overlaps, direction):
     create an optimal boundary cut from 
     an error matrix calculated from overlaps
     """
-    ol1, ol2 = overlaps        
+    #TODO: create minimum boundary for very small overlaps (for example just 1 pixel)
+    ol1, ol2 = overlaps      
     #calculate error and convert to grayscale
     err = ((ol1 - ol2)**2).mean(2)
     
@@ -634,6 +611,7 @@ def create_patch_params(example0, scaling,
                         overlap_ratio = 1/6, patch_ratio = 0.05):
     """patch_ratio = #size of patches in comparison with original
     """
+    #TODO: define minimum size for patches
     res_patch2 = int(min(example0.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
     res_patch = np.round(res_patch2*scaling).astype(int)
@@ -766,64 +744,69 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
-    if False:
+    if True:
         np.random.seed(10)
-        random.seed(20)
+        random.seed(50)#2992)#25 is chip + original img
         target1, _, verts = generate_test_target_with_fill_mask(example)
         for v in verts[:1]:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
             target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
-    
+
     edge = 50
     target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
     target0_start = target0.copy()
-    lib_size = 128*128
-    patch_ratio = 0.05
-    example, scaling = normalize_picture(example0, lib_size)
-    #resize target to the same scale as the scaled example
-    target = skimage.transform.rescale(target0, scaling,
-    #example = skimage.transform.resize(example0, (256,256),
-                                        anti_aliasing=True,
-                                        multichannel=True,
-                                        preserve_range=True)#.astype(np.uint8)
-    target_start = target.copy()
-    res_target = target.shape[:2]
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling, 1/6,
-                                                                   patch_ratio)
-    rpg = np.array(res_patch) - overlap
-    res_grid = np.ceil((res_target-overlap)/rpg).astype(int)
-    max_co = np.array(example.shape[:2]) - res_patch
-    data = create_patch_data(example, res_patch, max_co)
-    tree = sklearn.neighbors.KDTree(data, metric='l2')
     
-    rp, rp2 = res_patch, res_patch2
-    for coords in np.ndindex(*res_grid):
-        #to get "whole" patches, we need the last row to have the same
-        #border as the target image:
-        yp,xp = co_target = np.minimum(res_target-res_patch,np.array(coords) * rpg)
-
-        search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
-        new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
+    skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
     
-        #find patch from original image    
-        co_p = np.array(idx2co(new_idx, max_co))
-        patch = example[co_p[0]:co_p[0]+rp[0],co_p[1]:co_p[1]+rp[1]]
-        #insert into small target picture
-        copy_img(target, patch, (xp, yp))
-    
-        co_p2 = np.round(co_p / scaling).astype(int)
-        patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
-        copy_img(target0, patch2, np.round(co_target/scaling).astype(int)[::-1])
+    if False:
+        lib_size = 128*128
+        patch_ratio = 0.1
+        example, scaling = normalize_picture(example0, lib_size)
+        #resize target to the same scale as the scaled example
+        target = skimage.transform.rescale(target0, scaling,
+        #example = skimage.transform.resize(example0, (256,256),
+                                            anti_aliasing=True,
+                                            multichannel=True,
+                                            preserve_range=True)#.astype(np.uint8)
+        target_start = target.copy()
+        res_target = target.shape[:2]
+        res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling, 1/6,
+                                                                       patch_ratio)
+        rpg = np.array(res_patch) - overlap
+        res_grid = np.ceil((res_target-overlap)/rpg).astype(int)
+        max_co = np.array(example.shape[:2]) - res_patch
+        data = create_patch_data(example, res_patch, max_co)
+        tree = sklearn.neighbors.KDTree(data, metric='l2')
         
-        
-        if False:#coords==(2,0):
-            patch_found = data[new_idx].reshape(*res_patch,4)
-            skimage.io.imshow_collection([patch_found])
-            skimage.io.imshow_collection([search_area, patch, patch2])
-            break
+        rp, rp2 = res_patch, res_patch2
+        for coords in np.ndindex(*res_grid):
+            #to get "whole" patches, we need the last row to have the same
+            #border as the target image:
+            yp,xp = co_target = np.minimum(res_target-res_patch,np.array(coords) * rpg)
     
-    skimage.io.imshow_collection([target0_start,target0,target, target_start])
+            search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
+            new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
+        
+            #find patch from original image    
+            co_p = np.array(idx2co(new_idx, max_co))
+            patch = example[co_p[0]:co_p[0]+rp[0],co_p[1]:co_p[1]+rp[1]]
+            #insert into small target picture
+            copy_img(target, patch, (xp, yp))
+        
+            co_p2 = np.round(co_p / scaling).astype(int)
+            patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
+            copy_img(target0, patch2, np.round(co_target/scaling).astype(int)[::-1])
+            
+            
+            if False:#coords==(2,0):
+                patch_found = data[new_idx].reshape(*res_patch,4)
+                skimage.io.imshow_collection([patch_found])
+                skimage.io.imshow_collection([search_area, patch, patch2])
+                break
+    
+    #skimage.io.imshow_collection([target0_start,target0,target, target_start])
+    #skimage.io.imshow_collection([pgimg])
     #skimage.io.imshow_collection([target0])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
