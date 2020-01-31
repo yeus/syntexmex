@@ -108,6 +108,8 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
                                 use_quilting=True):
     """
     synthesize texture from pre-calculated grid
+    
+    overlap = (horizontal_ovelap, vertical_overlap)
     """
     #TODO: create a generate- "info" function so that information doesn't have
     # to be exchanged so often
@@ -141,12 +143,12 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
             pa[:,:,:]=(0, 0.31, 0.22, 1) #TODO: make different fill colors possible
         
         #get corresponding overlaps:
-        if iy==0: ovs=(overlap[1],0,0,0)
-        elif ix==0: ovs=(0,overlap[0],0,0)
-        else: ovs=(overlap[1],overlap[0],0,0)
+        if iy==0: ovs=(overlap[1],0,0,0) #first row
+        elif ix==0: ovs=(0,overlap[0],0,0) #first column
+        else: ovs=(overlap[1],overlap[0],0,0) #rest of the grid
         
         if (iy==0 and ix==0) or (not use_quilting): pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-        else: pa = optimal_patch(target, example, res_patch, ovs, (y0,x0), (y,x))            
+        else: pa,_,_ = optimal_patch(target, example, res_patch, ovs, (y0,x0), (y,x))            
 
         #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
         copy_img(target, pa, (x,y))
@@ -170,9 +172,11 @@ def create_optimal_patch(pa, ta, overlaps):
     """
     mask = np.ones(pa.shape[:2])
     ovs = overlap_slices(overlaps)
-    for ov, orient, sl in zip(overlaps,["h","v","h","v"], ovs):
+    for ov, orient, sl, mirrored in zip(overlaps,["h","v","h","v"], ovs, 
+                              [False,False,True,True]):
         if ov>0: #if this boundary is used
             m = minimum_error_boundary_cut((pa[sl],ta[sl]), orient)
+            if mirrored: m = 1-m
             mask[sl] = np.minimum(m,mask[sl])
     
     new_pa = mask_blend(mask, ta, pa)
@@ -197,8 +201,8 @@ def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     y0,x0 = pos_ex
     pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
     ta = target[y:y+res_patch[0],x:x+res_patch[1]]
-
-    return create_optimal_patch(pa, ta, overlap)
+    optimpatch = create_optimal_patch(pa, ta, overlap)
+    return optimpatch, pa, ta
 
 def find_match(data, db, tol = 0.1, k=5):
     #get a horizonal overlap match
@@ -615,9 +619,9 @@ def create_patch_params(example0, scaling,
     res_patch2 = int(min(example0.shape[:2])*patch_ratio)
     res_patch2 = np.array([res_patch2]*2)
     res_patch = np.round(res_patch2*scaling).astype(int)
-    overlap = np.ceil((res_patch*overlap_ratio)).astype(int)    
+    overlap = np.ceil(res_patch*overlap_ratio).astype(int)    
     #res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
-    overlap2 = np.round(overlap/scaling).astype(int)
+    overlap2 = np.ceil(res_patch2*overlap_ratio).astype(int)
     
     return res_patch, res_patch2, overlap, overlap2
 
@@ -744,7 +748,7 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
-    if True:
+    if False:
         np.random.seed(10)
         random.seed(50)#2992)#25 is chip + original img
         target1, _, verts = generate_test_target_with_fill_mask(example)
@@ -757,10 +761,10 @@ if __name__ == "__main__":
     target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
     target0_start = target0.copy()
     
-    skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
+    #skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
     
-    if False:
-        lib_size = 128*128
+    if True:
+        lib_size = 256*256
         patch_ratio = 0.1
         example, scaling = normalize_picture(example0, lib_size)
         #resize target to the same scale as the scaled example
@@ -783,6 +787,8 @@ if __name__ == "__main__":
         for coords in np.ndindex(*res_grid):
             #to get "whole" patches, we need the last row to have the same
             #border as the target image:
+            #TODO: we need to "calculate back" the coordinates rom high res to 
+            #low-res and not the other way around as it is right now
             yp,xp = co_target = np.minimum(res_target-res_patch,np.array(coords) * rpg)
     
             search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
@@ -795,19 +801,29 @@ if __name__ == "__main__":
             copy_img(target, patch, (xp, yp))
         
             co_p2 = np.round(co_p / scaling).astype(int)
-            patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
-            copy_img(target0, patch2, np.round(co_target/scaling).astype(int)[::-1])
+            co_ta2 = np.round(co_target/scaling).astype(int)
+            #patch2 = example0[co_p2[0]:co_p2[0]+rp2[0],co_p2[1]:co_p2[1]+rp2[1]]
+            #ovs = np.repeat(overlap2,2)
+            ovs = np.r_[overlap2,overlap2]
+            pa, pa0, ta0 = optimal_patch(target0, example0, res_patch2, 
+                                         ovs, co_p2, co_ta2)
+            #target, example, res_patch, overlap, pos_ex, pos_ta=target0, example0, res_patch2, ovs, co_p2, co_ta2
             
             
-            if False:#coords==(2,0):
+            if False:#coords==(0,0):
+                #pa = optimal_patch(target0, example0, res_patch2, ovs, co_p2, co_target)
                 patch_found = data[new_idx].reshape(*res_patch,4)
-                skimage.io.imshow_collection([patch_found])
-                skimage.io.imshow_collection([search_area, patch, patch2])
+                skimage.io.imshow_collection([pa, pa0, ta0])
+                #skimage.io.imshow_collection(pa)
+                #skimage.io.imshow_collection([patch_found])
+                #skimage.io.imshow_collection([search_area, patch, patch2])
                 break
+            copy_img(target0, pa, co_ta2[::-1])
     
-    #skimage.io.imshow_collection([target0_start,target0,target, target_start])
+    
+    #skimage.io.imshow_collection([target0_start,target0, target_start,target])
     #skimage.io.imshow_collection([pgimg])
-    #skimage.io.imshow_collection([target0])
+    skimage.io.imshow_collection([target0])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
