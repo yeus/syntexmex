@@ -309,7 +309,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         print("init kdtree3")
         lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
                                                 t.get_arrays()[0])),
-                                      metric='l2')     
+                                      metric='l2')
         #TODO: check memory consumption of KDTrees
         #sklearn.neighbors.KDTree.valid_metrics
         #ov_db = [sklearn.neighbors.KDTree(i, metric='euclidean') for i in (ov_l, ov_t, ov_lt)]
@@ -720,10 +720,14 @@ def check_memory_requirements(example, res_patch, maxmem = 1.0):
     return data_memoryGB
 
 @timing
-def synthesize_tex_patches(target0, example0):
+def synthesize_tex_patches(target0, example0,
+                           lib_size = 200*200,
+                            patch_ratio = 0.07,
+                            overlap_ratio = 1/3):
+    """
+    TODO: make target texture use the already synthesized patch as an option
+    """
     target_new = target0.copy()
-    lib_size = 400*400
-    patch_ratio = 0.03
     example, scaling = normalize_picture(example0, lib_size)
     #resize target to the same scale as the scaled example
     target = skimage.transform.rescale(target0, scaling,
@@ -732,7 +736,8 @@ def synthesize_tex_patches(target0, example0):
                                         multichannel=True,
                                         preserve_range=True)#.astype(np.uint8)
     res_target0 = target0.shape[:2]
-    res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling, 1/3,
+    res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling, 
+                                                                   overlap_ratio,
                                                                    patch_ratio)
     rpg0 = np.array(res_patch0) - overlap0
     res_grid0 = np.ceil((res_target0-overlap0)/rpg0).astype(int)
@@ -745,8 +750,10 @@ def synthesize_tex_patches(target0, example0):
     for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
         #to get "whole" patches, we need the last row to have the same
         #border as the target image thats why we use "minimum":
+        #print(coords)
         yp0,xp0 = co_target0 = np.minimum(res_target0-res_patch0,np.array(coords) * rpg0)
         yp,xp  = np.round(co_target0*scaling).astype(int)
+        yp,xp = np.minimum(np.array(target.shape[:2])-res_patch, (yp,xp))
         
         search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
         new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)        
@@ -765,7 +772,7 @@ if __name__ == "__main__":
     example0 = skimage.io.imread("textures/rpitex.png")
     example0 = example0/255
     #example0 = skimage.transform.resize(example0, (500,1000))
-    example = example0#skimage.transform.rescale(example0, 0.25, multichannel=True)
+    example = skimage.transform.rescale(example0, 0.25, multichannel=True)
     #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
@@ -776,10 +783,10 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([*tas, img])
     
     #save debug images:
-    if False:
-        for i, ta in enumerate(tas):
-            ta = skimage.transform.resize(ta, final_res, anti_aliasing=False,order=0)
-            skimage.io.imsave(f"debug/{i}.png",ta[...,:3])
+    #if False:
+    #    for i, ta in enumerate(tas):
+    #        ta = skimage.transform.resize(ta, final_res, anti_aliasing=False,order=0)
+    #        skimage.io.imsave(f"debug/{i}.png",ta[...,:3])
         
     #skimage.io.imshow_collection(py)
     #skimage.io.imshow_collection([*tas])
@@ -796,18 +803,19 @@ if __name__ == "__main__":
         for v in verts[:1]:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-            target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
+            target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example, v)
 
-    edge = 50
+    edge = 10
     target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
     
     #skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
     
-    target = synthesize_tex_patches(target0, example0)
+    target = synthesize_tex_patches(target0, example)
+    target = synthesize_tex_patches(target, example)
     
-    skimage.io.imshow_collection([target])
+    skimage.io.imshow_collection([target0, target])
     #skimage.io.imshow_collection([pgimg])
-    #skimage.io.imshow_collection([target1])
+    skimage.io.imshow_collection([target1])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
