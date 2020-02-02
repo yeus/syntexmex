@@ -35,11 +35,41 @@ from functools import wraps
 import time
 import sklearn 
 import sklearn.neighbors
-import gc
+#import gc
 import math
+import functools
+sign = functools.partial(math.copysign, 1) # either of these
 #import scipy
 import shapely
 import shapely.geometry
+
+#def norm(x): return np.sqrt(x.dot(x))
+def norm(x): return np.sqrt((x*x).sum(-1))
+#need to be transposed for correct ultiplcation along axis 1
+def normalized(x): return (x.T /norm(x)).T 
+
+def calc_angle_vec(u, v):
+    """
+    >>> u = vec((1.0,1.0,0.0))
+    >>> v = vec((1.0,0.0,0.0))
+    >>> calc_angle_vec(u,v)*rad
+    45.00000000000001
+    >>> u = vec((1.0,0.0,0.0))
+    >>> v = vec((-1.0,0.0,0.0))
+    >>> calc_angle_vec(u,v)*rad
+    180.0
+    >>> u = vec([-9.38963669e-01, 3.44016319e-01, 1.38777878e-17])
+    >>> v = vec([-0.93896367, 0.34401632, 0.])
+    >>> u @ v / (norm(v)*norm(u))
+    1.0000000000000002
+    >>> calc_angle_vec(u,v)*rad
+    0.0
+    """
+    #angle = np.arctan2(norm(np.cross(u,v)), np.dot(u,v))
+    res = np.sum(u*v) / (norm(u) * norm(v))
+    t = np.clip(res,-1.0,1.0)
+    angle = np.arccos(t)
+    return angle
 
 #consider replacing sklearn KDTree with scipy KDTree
 #https://jakevdp.github.io/blog/2013/04/29/benchmarking-nearest-neighbor-searches-in-python/
@@ -91,6 +121,8 @@ def copy_img(target, src, pos, mask=None):
     else:
         m = mask
         target[t_iy0:t_iy1, t_ix0:t_ix1, 0:tch][m] = src[m]
+        
+    return target
 
 def mask_blend(m, img1, img2):
     """
@@ -748,6 +780,7 @@ def synthesize_tex_patches(target0, example0,
     tree = sklearn.neighbors.KDTree(data, metric='l2')
     rp = res_patch
     for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
+        #TODO: only iterate over "necessary" pixels indicated by a mask
         #to get "whole" patches, we need the last row to have the same
         #border as the target image thats why we use "minimum":
         #print(coords)
@@ -767,12 +800,17 @@ def synthesize_tex_patches(target0, example0,
     
     return target_new
 
+def calculate_face_normal(f):
+    v1,v2 = f[1]-f[0], f[2]-f[1]
+    n = sign(np.cross(v1,v2))
+    return n
+
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
     example0 = example0/255
     #example0 = skimage.transform.resize(example0, (500,1000))
-    example = skimage.transform.rescale(example0, 0.25, multichannel=True)
+    example = skimage.transform.rescale(example0, 0.125, multichannel=True)
     #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
@@ -800,22 +838,86 @@ if __name__ == "__main__":
         np.random.seed(10)
         random.seed(50)#2992)#25 is chip + original img
         target1, _, verts = generate_test_target_with_fill_mask(example)
-        for v in verts[:1]:
+        for v in verts:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
             target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example, v)
 
-    edge = 10
-    target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
+    #select two corresponding edges:
+    e1 = verts[0][:2]
+    e2 = verts[1][:2]
+
+    v1 = e1[1]-e1[0]
+    v2 = e2[1]-e2[0]
+
+
+    offset = 10
+    
+    n = [calculate_face_normal(f) for f in verts]
+    
+    #get a rectangle on the "inner" side of each edge
+    #flip x & y for the cross product because of reversed coordinate order in numpy arrays
+    #and image indexing
+    
+    v_ov1 = verts[0][3]-verts[0][0]
+    v_ov2 = verts[0][2]-verts[0][1]
+    
+    edge_area = np.array((*e1,
+                 e1[1]+normalized(v_ov2)*offset/math.sin(calc_angle_vec(-v1,v_ov2)),
+                 e1[0]+normalized(v_ov1)*offset/math.sin(calc_angle_vec(v1,v_ov1))))
+    
+    #vi = normalized(np.cross(v1[::-1],(0,0,n[0])))[:2][::-1]
+    
+    #e1_i = e1 + vi*offset
+    target1[skimage.draw.polygon(*edge_area.T)] *= (0.5,0.5,1.0,1.0)
+    
+    
+    skimage.io.imshow_collection([target1])
+    
+    
+    
+    """
+    edge = shapely.geometry.LineString(e1)#.expand(10)#.bounds
+    x = edge.parallel_offset(offset, "left", resolution=16, join_style=1, mitre_limit=5.0)
+    edgebox = edge.union(x).convex_hull
+    """
+    
+    #edge_area = np.array(edgebox.boundary.coords)[:-1]
+    #target1[skimage.draw.polygon(*x.boundary.xy)] *= (0.5,0.5,1.0,1.0)
+    #skimage.io.imshow_collection([target1])
+    
+    #edgebox.buffer(15).bounds
+
+
+    #angle between x-axis and edge
+    alpha = math.atan2(*v1)*180/math.pi
+    #area around edge to get edge straight
+    #calculate area around edge:
+
+
+    #edge = 10
+    #pos = y0-edge,x0-edge
+    #target0 = target1[y0-edge:y1+edge,x0-edge:x1+edge].copy()
+    
+    #skimage.io.imshow_collection([target0])
+    #TODO: cut out the stripes between the two uvs
+    
+    
     
     #skimage.io.imshow_collection([target0_start, fill1, fill2, pgimg])#,target0])
     
-    target = synthesize_tex_patches(target0, example)
-    target = synthesize_tex_patches(target, example)
+    #targets=[]
+    #targets.append(synthesize_tex_patches(target0, example))
+    #targets.append(synthesize_tex_patches(targets[-1], example,patch_ratio = 0.05))
+    #targets.append(synthesize_tex_patches(targets[-1], example,patch_ratio = 0.04))
     
-    skimage.io.imshow_collection([target0, target])
+    #copy_img(target1, targets[-1], pos[::-1])
+    
+    #skimage.io.imshow_collection(targets)
+    #skimage.io.imshow_collection([target0, target])
     #skimage.io.imshow_collection([pgimg])
-    skimage.io.imshow_collection([target1])
+    #skimage.io.imshow_collection([target1])
+    #skimage.io.imshow_collection([example])
     
     #tree, mask, mask_center, idx2co = create_mask_tree(example0,"noncausal5x5")
     
@@ -823,7 +925,7 @@ if __name__ == "__main__":
     #skimage.io.imshow_collection([target1, fill1, fill2, pgimg])
     #skimage.io.imshow_collection([target1])
     #skimage.io.imshow_collection([example0])
-    skimage.io.imsave("debug/synth.jpg", target0[...,:3])
+    #skimage.io.imsave("debug/synth.jpg", target0[...,:3])
     
     #analyze resulting patchgrid (og): 
     #import pandas as pd
