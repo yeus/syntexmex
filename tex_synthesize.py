@@ -866,14 +866,26 @@ if __name__ == "__main__":
                  e1[1]+normalized(v_ov2)*offset/math.sin(calc_angle_vec(-v1,v_ov2)),
                  e1[0]+normalized(v_ov1)*offset/math.sin(calc_angle_vec(v1,v_ov1))))
     
+    y0,x0,y1,x1 = np.floor(shapely.geometry.Polygon(edge_area).bounds).astype(int)
+    y1+=1;x1+=1
+    edge_synth_target = target1[y0:y1,x0:x1].copy()
     #vi = normalized(np.cross(v1[::-1],(0,0,n[0])))[:2][::-1]
     
     #e1_i = e1 + vi*offset
     target1[skimage.draw.polygon(*edge_area.T)] *= (0.5,0.5,1.0,1.0)
     
-    
+    skimage.io.imshow_collection([edge_synth_target])
+    #angle between x-axis and edge
+    alpha = math.atan2(*v1)
+    tmp = skimage.transform.rotate(edge_synth_target, alpha*180/math.pi, resize=True, order=3)
+    skimage.io.imshow_collection([tmp])
+
     skimage.io.imshow_collection([target1])
     
+    cy = np.round(math.sin(alpha)*(x1-x0)).astype(int)
+    h = offset+5
+    skimage.io.imshow_collection([tmp[cy-h:cy,:]])
+        
     
     
     """
@@ -889,8 +901,6 @@ if __name__ == "__main__":
     #edgebox.buffer(15).bounds
 
 
-    #angle between x-axis and edge
-    alpha = math.atan2(*v1)*180/math.pi
     #area around edge to get edge straight
     #calculate area around edge:
 
