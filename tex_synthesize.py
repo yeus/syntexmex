@@ -795,7 +795,7 @@ def synthesize_tex_patches(target0, example0,
         #TODO: replace with "real" target and scale down. This makes
         # the search more precise as pixel rounding effects can be
         # mitigated this way
-        search_area = target[yp:yp+rp[1],xp:xp+rp[0]].copy()
+        search_area = target[yp:yp+rp[0],xp:xp+rp[1]].copy()
         new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
         #find patch from original image
         co_p = np.array(idx2co(new_idx, max_co))
@@ -885,6 +885,7 @@ if __name__ == "__main__":
         np.random.seed(10)
         random.seed(50)#2992)#25 is chip + original img
         target1, _, verts = generate_test_target_with_fill_mask(example0)
+        target1[:]=(0,0.5,0,1)
         for v in verts:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
@@ -896,12 +897,21 @@ if __name__ == "__main__":
 
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
+    
+    #edge lenghts:
+    e1_len = norm(v1)
+    e2_len = norm(v2)    
+    edge_ratio = e1_len/e2_len
+    
+    #edge_perpendivular vectors pointing to the "left" of an edge
+    e1_perp_left = normalized(v1[::-1]*(-1,1))
+    e2_perp_left = normalized(v2[::-1]*(-1,1))
 
     #move along the edge and generate patches from information
     #from both sides of the edge
     lib_size=128*128
-    overlap_ratio = 1/3
-    patch_ratio = 0.05
+    overlap_ratio = 1/6
+    patch_ratio = 0.1
 
     target_new = target1.copy()
     example, scaling = normalize_picture(example0, lib_size)
@@ -922,18 +932,52 @@ if __name__ == "__main__":
     tree = sklearn.neighbors.KDTree(data, metric='l2')
     rp = res_patch0
 
-    max_step_width = min(res_patch)
+    max_step_width = min(res_patch0)
     edge_dir = normalized(v1)
-    for i in np.arange(0,norm(v1),max_step_width*0.5):
+    edge = shapely.geometry.LineString(e1-e1[0])
+    #TODO: iterate over the "longer" of the two edges. This way we do not
+    #need to scale the patches
+    for counter, i in enumerate(np.arange(0,norm(v1),max_step_width*0.5)):
     #    for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
         cy,cx = e1[0] + i*edge_dir #calculate center of patch
         yp,xp = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
     
         #target_new[skimage.draw.circle(cy,cx,2)]=(1,0,0,1)
-        search_area0 = target_new[yp:yp+rp[1],xp:xp+rp[0]].copy()
+        search_area0 = target_new[yp:yp+rp[0],xp:xp+rp[1]].copy()
+        for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
+            coords = np.array((yp,xp)) + patch_index - e1[0]
+            c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
+            d = c*v1-coords
+            #pixel on left or right side of edge?
+            isleft = (v1[1]*d[0]-d[1]*v1[0])<0
+            d_len = norm(c*v1-coords)
+            
+            #d_norm = d/d_len
+            #target_new[skimage.draw.circle(*(c*v1+e1[0]), 2)]=(1,0,0,1)
+            #target_new[skimage.draw.circle(*(c*v1+e1[0]+20*e1_perp_left), 2)]=(1,0,0,1)
+            
+            if isleft:
+                #now check the corresponding edge for the relevant pixel
+                #get corresponding point on corresponding edge
+                p_e2 = c*v2 + e2[0]
+                px2_coords = p_e2 + d_len * e2_perp_left
+                tmp = np.round(px2_coords).astype(int)
+                #TODO: use interpolation here (if edge lengths differ in length)
+                search_area0[patch_index] = target_new[tuple(tmp)]
+                #target_new[skimage.draw.circle(*p_e2, 2)]=(1,0,0,1)
+                #target_new[skimage.draw.circle(*(p_e2+20*e2_perp_left), 2)]=(1,0,0,1)
+                #and get corresponding point o the patch by 
+                
+                #print(coords, edge.distance(shapely.geometry.Point(*coords)),d,c)
+                #if i2 == 0: break
+
         search_area = skimage.transform.rescale(search_area0,scaling,
                                                 preserve_range=True,
                                                 multichannel=True)
+        
+        #skimage.io.imshow_collection([search_area0])
+        #skimage.io.imshow_collection([target_new])
+        
         new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
         co_p = np.array(idx2co(new_idx, max_co))
         #TODO: make a small local high-resolution search to find better matching
@@ -942,13 +986,17 @@ if __name__ == "__main__":
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0 = optimal_patch(target_new, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))
-        copy_img(target_new, pa, (xp,yp))
+        #TODO: copy only the part thats "inside" face 1 and 2
+        #TODO: copy only the "new patch" with the mask
+        #copy_img(target_new, pa, (xp,yp))
+        copy_img(target_new, search_area0, (xp,yp))
     
         patch_from_data = data[new_idx].reshape(*res_patch,4)
     
-        if False:
+        if counter == 2:#False:#counter == 2:
             skimage.io.imshow_collection([search_area0, search_area, target1,
                                   patch_from_data, pa,pa0,ta0])
+            break
     skimage.io.imshow_collection([target_new, target1])
 
     #edge_area = np.array(edgebox.boundary.coords)[:-1]
