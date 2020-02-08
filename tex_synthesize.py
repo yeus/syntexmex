@@ -860,7 +860,7 @@ if __name__ == "__main__":
     example0 = skimage.io.imread("textures/rpitex.png")
     example0 = example0/255
     #example0 = skimage.transform.resize(example0, (500,1000))
-    example0 = skimage.transform.rescale(example0, 0.25, multichannel=True)
+    example0 = skimage.transform.rescale(example0, 0.3, multichannel=True)
     #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
@@ -953,7 +953,7 @@ if __name__ == "__main__":
             d = c*v1-coords
             #pixel on left or right side of edge?
             isleft = (v1[1]*d[0]-d[1]*v1[0])<0
-            d_len = norm(c*v1-coords)
+            d_len = norm(d)
 
             if isleft:
                 #now check the corresponding edge for the relevant pixel
@@ -980,36 +980,45 @@ if __name__ == "__main__":
                                          ovs, co_p0, (yp,xp))
         
         if True: #for debugging
-            search_area0[:,:,0:2]*=0.5
+            search_area0[:,:,0:2]*=0.8
+            pa[:,:,0:2]*=0.8
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
         mask_sides = np.zeros(search_area0.shape[:2])
         for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
-            #TODO
-            coords = np.array((yp,xp)) + patch_index - e1[0]
-            c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
-            d = c*v1-coords
-            #pixel on left or right side of edge?
-            isleft = (v1[1]*d[0]-d[1]*v1[0])<0
-            d_len = norm(c*v1-coords)
-
-            if isleft:
-                mask_sides[patch_index]=1.0
-                #copy the created patch pixel-by-pixel
-                p_e2 = c*v2 + e2[0]
-                px2_coords = p_e2 + d_len * e2_perp_left
-                tmp = np.round(px2_coords).astype(int)
-                #TODO: copy pixels "in advance" to prevent holes from
-                #forming when having strong distortions in the transform
-                target_new[tuple(tmp)] = search_area0[patch_index]
+            sub_pixels = 2
+            for sub_pix in np.ndindex(sub_pixels,sub_pixels):
+                sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
+                coords = np.array((yp,xp)) + sub_idx - e1[0]
+                c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
+                d = c*v1-coords
+                #pixel on left or right side of edge?
+                isleft = (v1[1]*d[0]-d[1]*v1[0])<0
+                d_len = norm(d)
+    
+                if isleft:
+                    mask_sides[patch_index]=1.0
+                    #copy the created patch pixel-by-pixel
+                    p_e2 = c*v2 + e2[0]
+                    #for i in np.linspace(0,1.0,1):
+                    px2_coords = p_e2 + (d_len) * e2_perp_left
+                    tmp = np.round(px2_coords).astype(int)
+                    #TODO: copy pixels "in advance" to prevent holes from
+                    #TODO: du "subpixel-copying" to prevent holes from forming
+                    #forming when having strong distortions in the transform
+                    if mask[patch_index]>0:
+                        #target_new[tuple(tmp)] = search_area0[patch_index]
+                        target_new[tuple(tmp)] = pa[patch_index]
+                    #target_new[tuple(tmp-(1,0))] = search_area0[patch_index]
+                    #target_new[tuple(tmp-(0,1))] = search_area0[patch_index]
         
         #TODO: copy only the part thats "inside" face 1 and 2
         #TODO: copy only the "new patch" with the mask
         #copy_img(target_new, pa, (xp,yp))
         #copy_img(target_new, pa, (xp,yp), mask>0)
         #copy only the right side to its place
-        copy_img(target_new, search_area0, (xp,yp), mask_sides==0)
+        copy_img(target_new, pa, (xp,yp), mask_sides==0)
 
         patch_from_data = data[new_idx].reshape(*res_patch,4)
 
@@ -1020,7 +1029,7 @@ if __name__ == "__main__":
                                   patch_from_data, pa,pa0,ta0])
             break
     skimage.io.imshow_collection([target_new, target1])
-
+    #skimage.io.imshow_collection([target_new])
     #edge_area = np.array(edgebox.boundary.coords)[:-1]
     #target1[skimage.draw.polygon(*x.boundary.xy)] *= (0.5,0.5,1.0,1.0)
     #skimage.io.imshow_collection([target1])
