@@ -180,7 +180,9 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         else: ovs=(overlap[1],overlap[0],0,0) #rest of the grid
 
         if (iy==0 and ix==0) or (not use_quilting): pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-        else: pa,_,_ = optimal_patch(target, example, res_patch, ovs, (y0,x0), (y,x))
+        else:
+            ta_patch = target[y:y+res_patch[0],x:x+res_patch[1]]
+            pa,_,_,_ = optimal_patch(ta_patch, example, res_patch, ovs, (y0,x0), (y,x))
 
         #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
         copy_img(target, pa, (x,y))
@@ -212,10 +214,10 @@ def create_optimal_patch(pa, ta, overlaps):
             mask[sl] = np.minimum(m,mask[sl])
 
     new_pa = mask_blend(mask, ta, pa)
+    #TODO: only return mask
+    return new_pa, mask
 
-    return new_pa
-
-def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
+def optimal_patch(ta_patch, example, res_patch, overlap, pos_ex, pos_ta):
     """
     this creates optimal patches for reacangular patches with overlaps
     given in "overlap" with indics as follows:
@@ -232,9 +234,8 @@ def optimal_patch(target, example, res_patch, overlap, pos_ex, pos_ta):
     y,x = pos_ta
     y0,x0 = pos_ex
     pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
-    ta = target[y:y+res_patch[0],x:x+res_patch[1]]
-    optimpatch = create_optimal_patch(pa, ta, overlap)
-    return optimpatch, pa, ta
+    optimpatch, mask = create_optimal_patch(pa, ta_patch, overlap)
+    return optimpatch, pa, ta_patch, mask
 
 def find_match(data, db, tol = 0.1, k=5):
     #get a horizonal overlap match
@@ -801,7 +802,7 @@ def synthesize_tex_patches(target0, example0,
         co_p = np.array(idx2co(new_idx, max_co))
         co_p0 = np.round(co_p / scaling).astype(int)
         ovs = np.r_[overlap0,0,0]#,overlap0]
-        pa, pa0, ta0 = optimal_patch(target_new, example0, res_patch0,
+        pa, pa0, ta0, mask = optimal_patch(target_new, example0, res_patch0,
                                      ovs, co_p0, co_target0)
         copy_img(target_new, pa, co_target0[::-1])
 
@@ -897,12 +898,12 @@ if __name__ == "__main__":
 
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
-    
+
     #edge lenghts:
     e1_len = norm(v1)
-    e2_len = norm(v2)    
+    e2_len = norm(v2)
     edge_ratio = e1_len/e2_len
-    
+
     #edge_perpendivular vectors pointing to the "left" of an edge
     e1_perp_left = normalized(v1[::-1]*(-1,1))
     e2_perp_left = normalized(v2[::-1]*(-1,1))
@@ -941,7 +942,7 @@ if __name__ == "__main__":
     #    for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
         cy,cx = e1[0] + i*edge_dir #calculate center of patch
         yp,xp = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
-    
+
         #target_new[skimage.draw.circle(cy,cx,2)]=(1,0,0,1)
         search_area0 = target_new[yp:yp+rp[0],xp:xp+rp[1]].copy()
         for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
@@ -951,11 +952,7 @@ if __name__ == "__main__":
             #pixel on left or right side of edge?
             isleft = (v1[1]*d[0]-d[1]*v1[0])<0
             d_len = norm(c*v1-coords)
-            
-            #d_norm = d/d_len
-            #target_new[skimage.draw.circle(*(c*v1+e1[0]), 2)]=(1,0,0,1)
-            #target_new[skimage.draw.circle(*(c*v1+e1[0]+20*e1_perp_left), 2)]=(1,0,0,1)
-            
+
             if isleft:
                 #now check the corresponding edge for the relevant pixel
                 #get corresponding point on corresponding edge
@@ -964,36 +961,33 @@ if __name__ == "__main__":
                 tmp = np.round(px2_coords).astype(int)
                 #TODO: use interpolation here (if edge lengths differ in length)
                 search_area0[patch_index] = target_new[tuple(tmp)]
-                #target_new[skimage.draw.circle(*p_e2, 2)]=(1,0,0,1)
-                #target_new[skimage.draw.circle(*(p_e2+20*e2_perp_left), 2)]=(1,0,0,1)
-                #and get corresponding point o the patch by 
-                
-                #print(coords, edge.distance(shapely.geometry.Point(*coords)),d,c)
-                #if i2 == 0: break
 
-        search_area = skimage.transform.rescale(search_area0,scaling,
-                                                preserve_range=True,
-                                                multichannel=True)
-        
+        search_area = skimage.transform.resize(search_area0,res_patch,
+                                                preserve_range=True)
+
         #skimage.io.imshow_collection([search_area0])
         #skimage.io.imshow_collection([target_new])
-        
+
         new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
         co_p = np.array(idx2co(new_idx, max_co))
         #TODO: make a small local high-resolution search to find better matching
         # patches
         co_p0 = np.round(co_p / scaling).astype(int)
         ovs = np.r_[overlap0,overlap0]
-        pa, pa0, ta0 = optimal_patch(target_new, example0, res_patch0,
+        pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))
+        
+        
+        
         #TODO: copy only the part thats "inside" face 1 and 2
         #TODO: copy only the "new patch" with the mask
         #copy_img(target_new, pa, (xp,yp))
-        copy_img(target_new, search_area0, (xp,yp))
-    
+        copy_img(target_new, pa, (xp,yp), mask>0)
+
         patch_from_data = data[new_idx].reshape(*res_patch,4)
-    
-        if counter == 2:#False:#counter == 2:
+
+        #if counter == 2:
+        if False:#counter == 2:
             skimage.io.imshow_collection([search_area0, search_area, target1,
                                   patch_from_data, pa,pa0,ta0])
             break
@@ -1048,3 +1042,4 @@ if __name__ == "__main__":
     #allcells = pd.DataFrame(np.unique(allcells.flatten(), return_counts=True)).T
     #allcells.sort_values(1)
     #pd.DataFrame.from_items(allcells)
+    
