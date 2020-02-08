@@ -229,6 +229,8 @@ def optimal_patch(ta_patch, example, res_patch, overlap, pos_ex, pos_ta):
 
     the number of in "overlap" specifies the size of the overlap in pixels
     TODO: expand to arbitrarily sized boundaries
+    TODO: make it possible to "move" the source patch a couple pixels
+          to find a better fit
     """
     #TODO use np.s_ as indices
     y,x = pos_ta
@@ -977,17 +979,43 @@ if __name__ == "__main__":
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))
         
+        if True: #for debugging
+            search_area0[:,:,0:2]*=0.5
         
+        #copy one side of the patch back to its respective face 
+        #and also create a left/rght mask for masking the second part
+        mask_sides = np.zeros(search_area0.shape[:2])
+        for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
+            #TODO
+            coords = np.array((yp,xp)) + patch_index - e1[0]
+            c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
+            d = c*v1-coords
+            #pixel on left or right side of edge?
+            isleft = (v1[1]*d[0]-d[1]*v1[0])<0
+            d_len = norm(c*v1-coords)
+
+            if isleft:
+                mask_sides[patch_index]=1.0
+                #copy the created patch pixel-by-pixel
+                p_e2 = c*v2 + e2[0]
+                px2_coords = p_e2 + d_len * e2_perp_left
+                tmp = np.round(px2_coords).astype(int)
+                #TODO: copy pixels "in advance" to prevent holes from
+                #forming when having strong distortions in the transform
+                target_new[tuple(tmp)] = search_area0[patch_index]
         
         #TODO: copy only the part thats "inside" face 1 and 2
         #TODO: copy only the "new patch" with the mask
         #copy_img(target_new, pa, (xp,yp))
-        copy_img(target_new, pa, (xp,yp), mask>0)
+        #copy_img(target_new, pa, (xp,yp), mask>0)
+        #copy only the right side to its place
+        copy_img(target_new, search_area0, (xp,yp), mask_sides==0)
 
         patch_from_data = data[new_idx].reshape(*res_patch,4)
 
         #if counter == 2:
         if False:#counter == 2:
+            skimage.io.imshow_collection([search_area0, pa, mask_sides])
             skimage.io.imshow_collection([search_area0, search_area, target1,
                                   patch_from_data, pa,pa0,ta0])
             break
