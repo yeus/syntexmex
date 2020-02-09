@@ -742,7 +742,7 @@ def fill_area_with_texture(target, example0, verts):
     copy_img(target, fill1, (x0,y0), bmask)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
-    return target, fill1, fill2, pgimg
+    return target, bmask, fill1, fill2, pgimg
 
 def check_memory_requirements(example, res_patch, maxmem = 1.0):
     patch_num=np.product(np.array(example.shape[:2]) - res_patch)
@@ -892,7 +892,7 @@ if __name__ == "__main__":
         for v in verts:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-            target1, fill1, fill2, pgimg = fill_area_with_texture(target1, example0, v)
+            target1, fill1, fill2, pgimg, bmask = fill_area_with_texture(target1, example0, v)
 
     #select two corresponding edges:
     e1 = verts[0][:2]
@@ -980,8 +980,8 @@ if __name__ == "__main__":
                                          ovs, co_p0, (yp,xp))
         
         if True: #for debugging
-            search_area0[:,:,0:2]*=0.8
-            pa[:,:,0:2]*=0.8
+            search_area0[:,:,0:2]*=0.5
+            pa[:,:,0:2]*=0.5
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
@@ -1014,11 +1014,9 @@ if __name__ == "__main__":
                     #target_new[tuple(tmp-(0,1))] = search_area0[patch_index]
         
         #TODO: copy only the part thats "inside" face 1 and 2
-        #TODO: copy only the "new patch" with the mask
-        #copy_img(target_new, pa, (xp,yp))
-        #copy_img(target_new, pa, (xp,yp), mask>0)
         #copy only the right side to its place
-        copy_img(target_new, pa, (xp,yp), mask_sides==0)
+        mask_right_optimal = np.minimum(mask_sides==0, mask>0)
+        copy_img(target_new, pa, (xp,yp), mask_right_optimal)
 
         patch_from_data = data[new_idx].reshape(*res_patch,4)
 
