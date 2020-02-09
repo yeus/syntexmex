@@ -865,11 +865,15 @@ def isolate_edge():
     h = offset+5
     skimage.io.imshow_collection([tmp[cy-h:cy,:]])
 
+#TODO: "functionalize" the below function.
+# this means: calculate all the below things in individual matrices
+# and numpy arrays
 def transfer_patch_pixelwise(target, search_area0, 
                              yp,xp, patch_index,
                              edge_info,
-                             copy_back,
-                             sub_pixels = 1):
+                             fromtarget,
+                             sub_pixels = 1,
+                             mask_sides = None):
     e1,e2,v1,v2,e2_perp_left = edge_info
     for sub_pix in np.ndindex(sub_pixels,sub_pixels):
         sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
@@ -881,7 +885,7 @@ def transfer_patch_pixelwise(target, search_area0,
         d_len = norm(d)
 
         if isleft:
-            if copy_back==False:
+            if fromtarget:
                 #now check the corresponding edge for the relevant pixel
                 #get corresponding point on corresponding edge
                 p_e2 = c*v2 + e2[0]
@@ -962,15 +966,11 @@ if __name__ == "__main__":
             transfer_patch_pixelwise(target_new, search_area0, 
                                      yp,xp, patch_index,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
-                                     copy_back = False,
+                                     fromtarget = True,
                                      sub_pixels = 1)
-                        
 
         search_area = skimage.transform.resize(search_area0,res_patch,
                                                 preserve_range=True)
-
-        #skimage.io.imshow_collection([search_area0])
-        #skimage.io.imshow_collection([target_new])
 
         new_idx = find_match(search_area.flatten(), tree , tol=0.1, k=1)
         co_p = np.array(idx2co(new_idx, max_co))
@@ -979,8 +979,7 @@ if __name__ == "__main__":
         co_p0 = np.round(co_p / scaling).astype(int)
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
-                                         ovs, co_p0, (yp,xp))
-        
+                                         ovs, co_p0, (yp,xp))        
         if False: #for debugging
             search_area0[:,:,0:2]*=0.5
             pa[:,:,0:2]*=0.5
@@ -992,8 +991,9 @@ if __name__ == "__main__":
             transfer_patch_pixelwise(target_new, search_area0, 
                                      yp,xp, patch_index,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
-                                     copy_back = True,
-                                     sub_pixels = 2)
+                                     fromtarget = False,
+                                     sub_pixels = 2,
+                                     mask_sides = mask_sides)
         
         #TODO: copy only the part thats "inside" face 1 and 2
         #copy only the right side to its place
