@@ -755,6 +755,19 @@ def check_memory_requirements(example, res_patch, maxmem = 1.0):
     return data_memoryGB
 
 @timing
+def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
+    example, scaling = normalize_picture(example0, lib_size)
+    res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling,
+                                                                   overlap_ratio,
+                                                                   patch_ratio)
+    max_co = np.array(example.shape[:2]) - res_patch
+
+    check_memory_requirements(example,res_patch, maxmem=1.0)
+    data = create_patch_data(example, res_patch, max_co)
+    tree = sklearn.neighbors.KDTree(data, metric='l2')
+    return tree, res_patch, res_patch0, overlap, overlap0, max_co, scaling
+
+@timing
 def synthesize_tex_patches(target0, example0,
                            lib_size = 200*200,
                             patch_ratio = 0.07,
@@ -766,26 +779,24 @@ def synthesize_tex_patches(target0, example0,
     target. It also makes the produced patch more "precise" as we are not
     restricted to the target-pixels anymore
     """
+    
     target_new = target0.copy()
-    example, scaling = normalize_picture(example0, lib_size)
+    (tree, res_patch,
+     res_patch0, overlap,
+     overlap0, max_co, 
+     scaling) = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio)
+
+    res_target0 = target0.shape[:2]
+    rpg0 = np.array(res_patch0) - overlap0
+    res_grid0 = np.ceil((res_target0-overlap0)/rpg0).astype(int)
+
+    rp = res_patch
     #resize target to the same scale as the scaled example
     target = skimage.transform.rescale(target0, scaling,
-    #example = skimage.transform.resize(example0, (256,256),
                                         anti_aliasing=True,
                                         multichannel=True,
                                         preserve_range=True)#.astype(np.uint8)
-    res_target0 = target0.shape[:2]
-    res_patch, res_patch0, _, overlap0 = create_patch_params(example0, scaling,
-                                                                   overlap_ratio,
-                                                                   patch_ratio)
-    rpg0 = np.array(res_patch0) - overlap0
-    res_grid0 = np.ceil((res_target0-overlap0)/rpg0).astype(int)
-    max_co = np.array(example.shape[:2]) - res_patch
 
-    check_memory_requirements(example,res_patch, maxmem=1.0)
-    data = create_patch_data(example, res_patch, max_co)
-    tree = sklearn.neighbors.KDTree(data, metric='l2')
-    rp = res_patch
     for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
         #TODO: only iterate over "necessary" pixels indicated by a mask
         #to get "whole" patches, we need the last row to have the same
@@ -854,7 +865,6 @@ def isolate_edge():
     h = offset+5
     skimage.io.imshow_collection([tmp[cy-h:cy,:]])
 
-
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
@@ -865,23 +875,6 @@ if __name__ == "__main__":
     #TODO: more sophisticated memory reduction techniques (such as
     # a custom KDTree) This KDTree could be based on different, hierarchical
     # image resolutions for the error-search
-
-    #final_res = (300,300)
-    #target, tas = pixel_synthesize_texture(final_res, seed = 15)
-    #skimage.io.imshow_collection([*tas, img])
-
-    #save debug images:
-    #if False:
-    #    for i, ta in enumerate(tas):
-    #        ta = skimage.transform.resize(ta, final_res, anti_aliasing=False,order=0)
-    #        skimage.io.imsave(f"debug/{i}.png",ta[...,:3])
-
-    #skimage.io.imshow_collection(py)
-    #skimage.io.imshow_collection([*tas])
-    #skimage.io.imshow_collection([example])
-
-    #target, target2, pgimage = synth_patch_tex(target1,example0,k=1)
-    #skimage.io.imshow_collection([target])
 
     #lower brightnss of bounding box for debugging ppurposes
     if True:
@@ -916,37 +909,23 @@ if __name__ == "__main__":
     overlap_ratio = 1/6
     patch_ratio = 0.1
 
+
     target_new = target1.copy()
-    example, scaling = normalize_picture(example0, lib_size)
-    #resize target to the same scale as the scaled example
-    #target = skimage.transform.rescale(target, scaling,
-    ##example = skimage.transform.resize(example0, (256,256),
-    #                                    anti_aliasing=True,
-    #                                    multichannel=True,
-    #                                    preserve_range=True)#.astype(np.uint8)
-    res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling,
-                                                                   overlap_ratio,
-                                                                   patch_ratio)
-    rpg0 = np.array(res_patch0) - overlap0
-    max_co = np.array(example.shape[:2]) - res_patch
+    (tree, res_patch,
+     res_patch0, overlap,
+     overlap0, max_co, 
+     scaling) = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio)
 
-    check_memory_requirements(example,res_patch, maxmem=1.0)
-    data = create_patch_data(example, res_patch, max_co)
-    tree = sklearn.neighbors.KDTree(data, metric='l2')
-    rp = res_patch0
-
-    max_step_width = min(res_patch0)
     edge_dir = normalized(v1)
-    edge = shapely.geometry.LineString(e1-e1[0])
     #TODO: iterate over the "longer" of the two edges. This way we do not
     #need to scale the patches
-    for counter, i in enumerate(np.arange(0,norm(v1),max_step_width*0.5)):
-    #    for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
+    for counter, i in enumerate(np.arange(0,norm(v1),min(res_patch0)*0.5)):
         cy,cx = e1[0] + i*edge_dir #calculate center of patch
         yp,xp = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
 
         #target_new[skimage.draw.circle(cy,cx,2)]=(1,0,0,1)
-        search_area0 = target_new[yp:yp+rp[0],xp:xp+rp[1]].copy()
+        search_area0 = target_new[yp:yp+res_patch0[0],
+                                  xp:xp+res_patch0[1]].copy()
         for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
             coords = np.array((yp,xp)) + patch_index - e1[0]
             c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
@@ -1018,13 +997,12 @@ if __name__ == "__main__":
         mask_right_optimal = np.minimum(mask_sides==0, mask>0)
         copy_img(target_new, pa, (xp,yp), mask_right_optimal)
 
-        patch_from_data = data[new_idx].reshape(*res_patch,4)
-
         #if counter == 2:
         if False:#counter == 2:
+            #patch_from_data = data[new_idx].reshape(*res_patch,4)
             skimage.io.imshow_collection([search_area0, pa, mask_sides])
-            skimage.io.imshow_collection([search_area0, search_area, target1,
-                                  patch_from_data, pa,pa0,ta0])
+            #skimage.io.imshow_collection([search_area0, search_area, target1,
+            #                      patch_from_data, pa,pa0,ta0])
             break
     skimage.io.imshow_collection([target_new, target1])
     #skimage.io.imshow_collection([target_new])
