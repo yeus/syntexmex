@@ -865,6 +865,38 @@ def isolate_edge():
     h = offset+5
     skimage.io.imshow_collection([tmp[cy-h:cy,:]])
 
+def transfer_patch_pixelwise(target, search_area0, 
+                             yp,xp, patch_index,
+                             edge_info,
+                             copy_back,
+                             sub_pixels = 1):
+    e1,e2,v1,v2,e2_perp_left = edge_info
+    for sub_pix in np.ndindex(sub_pixels,sub_pixels):
+        sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
+        coords = np.array((yp,xp)) + sub_idx - e1[0]
+        c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
+        d = c*v1-coords
+        #pixel on left or right side of edge?
+        isleft = (v1[1]*d[0]-d[1]*v1[0])<0
+        d_len = norm(d)
+
+        if isleft:
+            if copy_back==False:
+                #now check the corresponding edge for the relevant pixel
+                #get corresponding point on corresponding edge
+                p_e2 = c*v2 + e2[0]
+                px2_coords = p_e2 + d_len * e2_perp_left
+                tmp = np.round(px2_coords).astype(int)
+                #TODO: use interpolation here (if edge lengths differ in length)
+                search_area0[patch_index] = target[tuple(tmp)]
+            else:
+                mask_sides[patch_index]=1.0
+                p_e2 = c*v2 + e2[0]
+                px2_coords = p_e2 + (d_len) * e2_perp_left
+                tmp = np.round(px2_coords).astype(int)
+                if mask[patch_index]>0:
+                    target[tuple(tmp)] = pa[patch_index]
+
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
@@ -926,22 +958,13 @@ if __name__ == "__main__":
         #target_new[skimage.draw.circle(cy,cx,2)]=(1,0,0,1)
         search_area0 = target_new[yp:yp+res_patch0[0],
                                   xp:xp+res_patch0[1]].copy()
-        for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
-            coords = np.array((yp,xp)) + patch_index - e1[0]
-            c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
-            d = c*v1-coords
-            #pixel on left or right side of edge?
-            isleft = (v1[1]*d[0]-d[1]*v1[0])<0
-            d_len = norm(d)
-
-            if isleft:
-                #now check the corresponding edge for the relevant pixel
-                #get corresponding point on corresponding edge
-                p_e2 = c*v2 + e2[0]
-                px2_coords = p_e2 + d_len * e2_perp_left
-                tmp = np.round(px2_coords).astype(int)
-                #TODO: use interpolation here (if edge lengths differ in length)
-                search_area0[patch_index] = target_new[tuple(tmp)]
+        for patch_index in np.ndindex(search_area0.shape[:2]):
+            transfer_patch_pixelwise(target_new, search_area0, 
+                                     yp,xp, patch_index,
+                                     edge_info = (e1,e2,v1,v2,e2_perp_left),
+                                     copy_back = False,
+                                     sub_pixels = 1)
+                        
 
         search_area = skimage.transform.resize(search_area0,res_patch,
                                                 preserve_range=True)
@@ -958,39 +981,19 @@ if __name__ == "__main__":
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))
         
-        if True: #for debugging
+        if False: #for debugging
             search_area0[:,:,0:2]*=0.5
             pa[:,:,0:2]*=0.5
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
         mask_sides = np.zeros(search_area0.shape[:2])
-        for i2,patch_index in enumerate(np.ndindex(search_area0.shape[:2])):#np.ndenumerate(search_area):
-            sub_pixels = 2
-            for sub_pix in np.ndindex(sub_pixels,sub_pixels):
-                sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
-                coords = np.array((yp,xp)) + sub_idx - e1[0]
-                c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
-                d = c*v1-coords
-                #pixel on left or right side of edge?
-                isleft = (v1[1]*d[0]-d[1]*v1[0])<0
-                d_len = norm(d)
-    
-                if isleft:
-                    mask_sides[patch_index]=1.0
-                    #copy the created patch pixel-by-pixel
-                    p_e2 = c*v2 + e2[0]
-                    #for i in np.linspace(0,1.0,1):
-                    px2_coords = p_e2 + (d_len) * e2_perp_left
-                    tmp = np.round(px2_coords).astype(int)
-                    #TODO: copy pixels "in advance" to prevent holes from
-                    #TODO: du "subpixel-copying" to prevent holes from forming
-                    #forming when having strong distortions in the transform
-                    if mask[patch_index]>0:
-                        #target_new[tuple(tmp)] = search_area0[patch_index]
-                        target_new[tuple(tmp)] = pa[patch_index]
-                    #target_new[tuple(tmp-(1,0))] = search_area0[patch_index]
-                    #target_new[tuple(tmp-(0,1))] = search_area0[patch_index]
+        for patch_index in np.ndindex(search_area0.shape[:2]):
+            transfer_patch_pixelwise(target_new, search_area0, 
+                                     yp,xp, patch_index,
+                                     edge_info = (e1,e2,v1,v2,e2_perp_left),
+                                     copy_back = True,
+                                     sub_pixels = 2)
         
         #TODO: copy only the part thats "inside" face 1 and 2
         #copy only the right side to its place
