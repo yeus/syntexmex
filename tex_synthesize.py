@@ -872,6 +872,7 @@ def transfer_patch_pixelwise(target, search_area0,
                              yp,xp, patch_index,
                              edge_info,
                              fromtarget,
+                             face_source,
                              sub_pixels = 1,
                              mask_sides = None,
                              mask = None,
@@ -903,10 +904,12 @@ def transfer_patch_pixelwise(target, search_area0,
                 p_e2 = c*v2 + e2[0]
                 px2_coords = p_e2 + (d_len) * e2_perp_left
                 tmp = np.round(px2_coords).astype(int)
-                if mask[patch_index]>0:
-                    target[tuple(tmp)] = pa[patch_index]
+                if check_inside_face(face_source, tmp):
+                    if mask[patch_index]>0:
+                        target[tuple(tmp)] = pa[patch_index]
 
 def make_seamless_edge(e1,e2, target, example0):
+    (e1,verts1),(e2,verts2) = e1,e2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
 
@@ -930,6 +933,9 @@ def make_seamless_edge(e1,e2, target, example0):
     #TODO: iterate over the "longer" of the two edges. This way we do not
     #need to scale the patches
     for counter, i in enumerate(np.arange(0,norm(v1),min(res_patch0)*0.5)):
+        # TODO: for the corners we need to search the faces and edges
+        # connected to this corner to fill the patc with corresponding
+        # pixels
         cy,cx = e1[0] + i*edge_dir #calculate center of patch
         yp,xp = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
 
@@ -941,6 +947,7 @@ def make_seamless_edge(e1,e2, target, example0):
                                      yp,xp, patch_index,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
                                      fromtarget = True,
+                                     face_source = verts2,
                                      sub_pixels = 1)
 
         search_area = skimage.transform.resize(search_area0,res_patch,
@@ -966,14 +973,22 @@ def make_seamless_edge(e1,e2, target, example0):
                                      yp,xp, patch_index,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
                                      fromtarget = False,
+                                     face_source = verts2,
                                      sub_pixels = 2,
                                      mask_sides = mask_sides,
                                      mask = mask,
                                      pa = pa)
         
+        
         #TODO: copy only the part thats "inside" face 1 and 2
+        mask_inside = np.zeros(search_area0.shape[:2])
+        for patch_index in np.ndindex(search_area0.shape[:2]):
+            coords = patch_index + np.array((yp,xp))
+            mask_inside[patch_index] = check_inside_face(verts1,coords)
+            
         #copy only the right side to its place
         mask_right_optimal = np.minimum(mask_sides==0, mask>0)
+        mask_right_optimal = np.minimum(mask_right_optimal, mask_inside>0)
         copy_img(target_new, pa, (xp,yp), mask_right_optimal)
 
         #if counter == 2:
@@ -985,6 +1000,10 @@ def make_seamless_edge(e1,e2, target, example0):
             break
         
     return target_new
+
+def check_inside_face(polygon, point):
+        face = shapely.geometry.Polygon(polygon)
+        return face.contains(shapely.geometry.Point(*point))
 
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
@@ -1007,15 +1026,19 @@ if __name__ == "__main__":
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
             target1, fill1, fill2, pgimg, bmask = fill_area_with_texture(target1, example0, v)
+    
+    check_inside_face(verts[0],(55,100))
+    
 
     #select two corresponding edges:
     edges = ((verts[0][:2],verts[1][:2]),
      (verts[0][1:3],verts[1][1:3]))
                 
     target_new = target1
-    for e1,e2 in edges:
+    for e1,e2 in edges[:1]:
         print("alter next edge")
-        target_new = make_seamless_edge(e1,e2, target_new, example0)
+        target_new = make_seamless_edge((e1,verts[0]),(e2,verts[1]), 
+                                        target_new, example0)
     
     skimage.io.imshow_collection([target_new, target1])
     #skimage.io.imshow_collection([target_new])
