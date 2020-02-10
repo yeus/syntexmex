@@ -873,7 +873,12 @@ def transfer_patch_pixelwise(target, search_area0,
                              edge_info,
                              fromtarget,
                              sub_pixels = 1,
-                             mask_sides = None):
+                             mask_sides = None,
+                             mask = None,
+                             pa = None):
+    """This function takes an edge and pixel, and searches for the corresponding
+    pixel at another edge.
+    """
     e1,e2,v1,v2,e2_perp_left = edge_info
     for sub_pix in np.ndindex(sub_pixels,sub_pixels):
         sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
@@ -901,42 +906,11 @@ def transfer_patch_pixelwise(target, search_area0,
                 if mask[patch_index]>0:
                     target[tuple(tmp)] = pa[patch_index]
 
-if __name__ == "__main__":
-    #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
-    example0 = skimage.io.imread("textures/rpitex.png")
-    example0 = example0/255
-    #example0 = skimage.transform.resize(example0, (500,1000))
-    example0 = skimage.transform.rescale(example0, 0.3, multichannel=True)
-    #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
-    #TODO: more sophisticated memory reduction techniques (such as
-    # a custom KDTree) This KDTree could be based on different, hierarchical
-    # image resolutions for the error-search
-
-    #lower brightnss of bounding box for debugging ppurposes
-    if True:
-        np.random.seed(10)
-        random.seed(50)#2992)#25 is chip + original img
-        target1, _, verts = generate_test_target_with_fill_mask(example0)
-        target1[:]=(0,0.5,0,1)
-        for v in verts:
-            y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
-            #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
-            target1, fill1, fill2, pgimg, bmask = fill_area_with_texture(target1, example0, v)
-
-    #select two corresponding edges:
-    e1 = verts[0][:2]
-    e2 = verts[1][:2]
-
+def make_seamless_edge(e1,e2, target, example0):
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
 
-    #edge lenghts:
-    e1_len = norm(v1)
-    e2_len = norm(v2)
-    edge_ratio = e1_len/e2_len
-
     #edge_perpendivular vectors pointing to the "left" of an edge
-    e1_perp_left = normalized(v1[::-1]*(-1,1))
     e2_perp_left = normalized(v2[::-1]*(-1,1))
 
     #move along the edge and generate patches from information
@@ -946,7 +920,7 @@ if __name__ == "__main__":
     patch_ratio = 0.1
 
 
-    target_new = target1.copy()
+    target_new = target.copy()
     (tree, res_patch,
      res_patch0, overlap,
      overlap0, max_co, 
@@ -993,7 +967,9 @@ if __name__ == "__main__":
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
                                      fromtarget = False,
                                      sub_pixels = 2,
-                                     mask_sides = mask_sides)
+                                     mask_sides = mask_sides,
+                                     mask = mask,
+                                     pa = pa)
         
         #TODO: copy only the part thats "inside" face 1 and 2
         #copy only the right side to its place
@@ -1007,6 +983,40 @@ if __name__ == "__main__":
             #skimage.io.imshow_collection([search_area0, search_area, target1,
             #                      patch_from_data, pa,pa0,ta0])
             break
+        
+    return target_new
+
+if __name__ == "__main__":
+    #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
+    example0 = skimage.io.imread("textures/rpitex.png")
+    example0 = example0/255
+    #example0 = skimage.transform.resize(example0, (500,1000))
+    example0 = skimage.transform.rescale(example0, 0.3, multichannel=True)
+    #example0 = example = skimage.io.imread("RASP_03_05.png") #load example texture
+    #TODO: more sophisticated memory reduction techniques (such as
+    # a custom KDTree) This KDTree could be based on different, hierarchical
+    # image resolutions for the error-search
+
+    #lower brightnss of bounding box for debugging ppurposes
+    if True:
+        np.random.seed(10)
+        random.seed(50)#2992)#25 is chip + original img
+        target1, _, verts = generate_test_target_with_fill_mask(example0)
+        target1[:]=(0,0.5,0,1)
+        for v in verts:
+            y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
+            #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
+            target1, fill1, fill2, pgimg, bmask = fill_area_with_texture(target1, example0, v)
+
+    #select two corresponding edges:
+    edges = ((verts[0][:2],verts[1][:2]),
+     (verts[0][1:3],verts[1][1:3]))
+                
+    target_new = target1
+    for e1,e2 in edges:
+        print("alter next edge")
+        target_new = make_seamless_edge(e1,e2, target_new, example0)
+    
     skimage.io.imshow_collection([target_new, target1])
     #skimage.io.imshow_collection([target_new])
     #edge_area = np.array(edgebox.boundary.coords)[:-1]
