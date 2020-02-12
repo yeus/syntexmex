@@ -688,7 +688,7 @@ def generate_test_target_with_fill_mask(example):
     masks = []
     pxverts = []
     for v in verts:
-        pxverts.append(np.round(v * target.shape[:2]).astype(int))
+        pxverts.append(v * target.shape[:2])
         rr,cc = skimage.draw.polygon(*v.T)
         mask = np.zeros(target.shape[:2])
         mask[rr,cc]=1.0
@@ -961,9 +961,9 @@ def make_seamless_edge(e1,e2, target, example0):
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))        
-        if False: #for debugging
+        if True: #for debugging
             search_area0[:,:,0:2]*=0.5
-            pa[:,:,0:2]*=0.5
+            pa[:,:,1]+=1
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
@@ -989,7 +989,7 @@ def make_seamless_edge(e1,e2, target, example0):
         #copy only the right side to its place
         mask_right_optimal = np.minimum(mask_sides==0, mask>0)
         mask_right_optimal = np.minimum(mask_right_optimal, mask_inside>0)
-        copy_img(target_new, pa, (xp,yp), mask_right_optimal)
+        copy_img(target_new, pa, (xp,yp))#, mask_right_optimal)
 
         #if counter == 2:
         if False:#counter == 2:
