@@ -714,12 +714,12 @@ def get_poly_levelset(verts, width=10):
     poly = shapely.geometry.Polygon(verts)
     poly_box = poly.buffer(+width) #add two pixels on the container
     bbox = poly_box.bounds
-    minx, miny, maxx, maxy = bbox_px = np.round(np.array(bbox)).astype(int)
+    miny, minx, maxy, maxx = bbox_px = np.round(np.array(bbox)).astype(int)
     w,h = maxx - minx, maxy-miny
 
 
     bbcoords = itertools.product(range(miny,maxy), range(minx, maxx))
-    levelset = np.array([edge_distance(poly,x,y) for y,x in bbcoords]).reshape(h,w)
+    levelset = np.array([edge_distance(poly,y,x) for y,x in bbcoords]).reshape(h,w)
     #normalize levelset:
     #levelset = np.maximum(levelset/levelset.max(),0.0)
     return levelset, bbox_px
@@ -887,34 +887,33 @@ def transfer_patch_pixelwise(target, search_area0,
         c = coords.dot(v1)/(v1.dot(v1))#ortihonal projection of pixel on edge
         d = c*v1-coords
         #pixel on left or right side of edge?
-        isleft = (v1[1]*d[0]-d[1]*v1[0])<0
+        isleft = (v1[1]*d[0]-d[1]*v1[0])>0
         d_len = norm(d)
 
         if isleft:
+            #calculate corresponding pixel at other edge
+            p_e2 = c*v2 + e2[0]
+            px2_coords = p_e2 + d_len * e2_perp_left
+            tmp = np.round(px2_coords).astype(int)
             if fromtarget:
-                #now check the corresponding edge for the relevant pixel
-                #get corresponding point on corresponding edge
-                p_e2 = c*v2 + e2[0]
-                px2_coords = p_e2 + d_len * e2_perp_left
-                tmp = np.round(px2_coords).astype(int)
+                #copy pixel from target to the search index
                 #TODO: use interpolation here (if edge lengths differ in length)
                 search_area0[patch_index] = target[tuple(tmp)]
             else:
                 mask_sides[patch_index]=1.0
-                p_e2 = c*v2 + e2[0]
-                px2_coords = p_e2 + (d_len) * e2_perp_left
-                tmp = np.round(px2_coords).astype(int)
                 if check_inside_face(face_source, tmp):
                     if mask[patch_index]>0:
+                         #copy pixel from generated patch back to target
                         target[tuple(tmp)] = pa[patch_index]
+                #target[tuple(tmp)] = pa[patch_index]
 
-def make_seamless_edge(e1,e2, target, example0):
+def make_seamless_edge(e1,e2, target, example0, debug_level=0):
     (e1,verts1),(e2,verts2) = e1,e2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
 
     #edge_perpendivular vectors pointing to the "left" of an edge
-    e2_perp_left = normalized(v2[::-1]*(-1,1))
+    e2_perp_left = normalized(v2[::-1]*(1,-1))
 
     #move along the edge and generate patches from information
     #from both sides of the edge
@@ -931,8 +930,15 @@ def make_seamless_edge(e1,e2, target, example0):
 
     edge_dir = normalized(v1)
     #TODO: iterate over the "longer" of the two edges. This way we do not
-    #need to scale the patches
-    for counter, i in enumerate(np.arange(0,norm(v1),min(res_patch0)*0.5)):
+    #need to scale the patches? --> we also have to ransfer back so that
+    #doesnt really make sense...  the only thin is:
+    #it might be better to have the transoformation from the optimized patch
+    #back to the second edge with fewer
+    #"disturbances" meaning: it would be better to have the second edge the
+    #shorter one. While it is not as important to have an
+    #undisturbed view search patch
+    step_width = min(res_patch0)*0.5
+    for counter, i in enumerate(np.arange(0,norm(v1)+step_width,step_width)):
         # TODO: for the corners we need to search the faces and edges
         # connected to this corner to fill the patc with corresponding
         # pixels
@@ -961,9 +967,9 @@ def make_seamless_edge(e1,e2, target, example0):
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))        
-        if True: #for debugging
-            search_area0[:,:,0:2]*=0.5
-            pa[:,:,1]+=1
+        if debug_level>0: #for debugging
+            search_area0[:,:,0:2]=(1,1)
+            pa[:,:,1]=1
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
@@ -987,12 +993,13 @@ def make_seamless_edge(e1,e2, target, example0):
             mask_inside[patch_index] = check_inside_face(verts1,coords)
             
         #copy only the right side to its place
+        #mask_right_optimal = mask_sides==0
         mask_right_optimal = np.minimum(mask_sides==0, mask>0)
         mask_right_optimal = np.minimum(mask_right_optimal, mask_inside>0)
-        copy_img(target_new, pa, (xp,yp))#, mask_right_optimal)
+        copy_img(target_new, pa, (xp,yp), mask_right_optimal)
 
         #if counter == 2:
-        if False:#counter == 2:
+        if False:#debug_level>0:#counter == 2:
             #patch_from_data = data[new_idx].reshape(*res_patch,4)
             skimage.io.imshow_collection([search_area0, pa, mask_sides])
             #skimage.io.imshow_collection([search_area0, search_area, target1,
