@@ -891,8 +891,9 @@ def transfer_patch_pixelwise(target, search_area0,
         d_len = norm(d)
 
         if isleft:
-            #calculate corresponding pixel at other edge
-            p_e2 = c*v2 + e2[0]
+            #calculate corresponding pixel at other edge in reverse direction
+            # (this is why we use (1-c))
+            p_e2 = (1-c)*(v2) + e2[0]
             px2_coords = p_e2 + d_len * e2_perp_left
             tmp = np.round(px2_coords).astype(int)
             if fromtarget:
@@ -986,7 +987,7 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
                                      pa = pa)
         
         
-        #TODO: copy only the part thats "inside" face 1 and 2
+        #TODO: copy only the part thats "inside" face 1
         mask_inside = np.zeros(search_area0.shape[:2])
         for patch_index in np.ndindex(search_area0.shape[:2]):
             coords = patch_index + np.array((yp,xp))
