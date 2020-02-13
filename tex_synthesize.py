@@ -724,22 +724,28 @@ def get_poly_levelset(verts, width=10):
     #levelset = np.maximum(levelset/levelset.max(),0.0)
     return levelset, bbox_px
 
-def fill_area_with_texture(target, example0, verts):
-    area = shapely.geometry.Polygon(verts)
-    ov = 1 #overlap
-    y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
+def fill_area_with_texture(target, example0, 
+                           verts=None, bmask = None, bounding_box = None):
+    if bounding_box is None:
+        area = shapely.geometry.Polygon(verts)
+        ov = 1 #overlap
+        y0,x0,y1,x1 = np.array(area.bounds).astype(int) + (-ov,-ov,ov,ov)
+    else:
+        y0,x0,y1,x1 = bounding_box
     #print("create levelset")
     #levelset, (minx, miny, maxx, maxy) = get_poly_levelset(verts, width=ov)
     bbox = target[y0:y1,x0:x1]
     #bmask = levelset>0
-    mask = draw_polygon_mask(verts,target.shape[:2])
-    bmask = mask[y0:y1,x0:x1]>0
+    if bmask is None:
+        mask = draw_polygon_mask(verts,target.shape[:2])
+        bmask = mask[y0:y1,x0:x1]>0
     #bmask2 = mask[y0:y1,x0:x1]>0
     #area.boundary.buffer(100)
 
     print("synthesize texture")
     fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1)
-    copy_img(target, fill1, (x0,y0), bmask)
+    if bounding_box is None: copy_img(target, fill1, (x0,y0), bmask)
+    else: copy_img(target, fill1, (x0,y0), bmask)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
     return target, bmask, fill1, fill2, pgimg
