@@ -93,34 +93,30 @@ def copy_img(target, src, pos, mask=None):
     """
     copy image src to target at pos
 
-    careful! x & y are switch around here i contrast to other
-    functions of this library. oder: pos=(x,y)
+    careful! x & y are switched around here (normal order) in contrast to other
+    functions of this library. order: pos=(x,y)
     """
     #TODO: handle border clipping problems
     # - when copying images that exten over "left" and "top" edges
     sh,sw,sch = src.shape
     th,tw,tch = target.shape
 
-    i0x = pos[0]
-    i0y = pos[1]
-    i1x = i0x+sw
-    i1y = i0y+sh
-    t_ix0 = max(i0x, 0)
-    t_iy0 = max(i0y, 0)
-    t_ix1 = min(i1x, tw)
-    t_iy1 = min(i1y, th)
-
-    #cut patch to right size
-    pw, ph  = t_ix1 - t_ix0, t_iy1 - t_iy0
+    i0x = np.clip(pos[0],0,tw)
+    i0y = np.clip(pos[1],0,th)
+    i1x = np.clip(pos[0]+sw,0,tw)
+    i1y = np.clip(pos[1]+sh,0,th)
+    
+    #cut source patch to right size
+    pw, ph  = max(i1x - i0x,0), max(i1y - i0y,0)
 
     if mask is None:
         tch = sch
         #print(pos)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
-        target[t_iy0:t_iy1, t_ix0:t_ix1, 0:tch] = src[0:ph, 0:pw]
+        target[i0y:i1y, i0x:i1x, 0:tch] = src[0:ph, 0:pw]
     else:
         m = mask
-        target[t_iy0:t_iy1, t_ix0:t_ix1, 0:tch][m] = src[m]
+        target[i0y:i1y, i0x:i1x, 0:tch][m] = src[m]
 
     return target
 
@@ -886,6 +882,9 @@ def transfer_patch_pixelwise(target, search_area0,
                              pa = None):
     """This function takes an edge and pixel, and searches for the corresponding
     pixel at another edge.
+    
+    TODO: check if the pixel on the second edge exists or is outside
+    the target
     """
     e1,e2,v1,v2,e2_perp_left = edge_info
     for sub_pix in np.ndindex(sub_pixels,sub_pixels):
@@ -930,11 +929,20 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
     patch_ratio = 0.1
 
 
-    target_new = target.copy()
     (tree, res_patch,
      res_patch0, overlap,
      overlap0, max_co, 
      scaling) = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio)
+    print(f"patch_size = {res_patch0}, overlap = {overlap0}, libsize = {lib_size}")
+#    target_new = target.copy()
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    target_new = np.pad(target.copy(),((res_patch0[0],res_patch0[0]),
+                                    (res_patch0[1],res_patch0[1]),(0,0)), mode='edge')
+    #transform coordinates to padded target
+    e1+=res_patch0
+    e2+=res_patch0
+    verts1+=res_patch0
+    verts2+=res_patch0
 
     edge_dir = normalized(v1)
     #TODO: iterate over the "longer" of the two edges. This way we do not
@@ -950,10 +958,18 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
         # TODO: for the corners we need to search the faces and edges
         # connected to this corner to fill the patc with corresponding
         # pixels
+        #print(i)
         cy,cx = e1[0] + i*edge_dir #calculate center of patch
-        yp,xp = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
-
+        yp,xp = pos = np.round((cy,cx) - res_patch0/2).astype(int) #calculate left upper corner of patch
         #target_new[skimage.draw.circle(cy,cx,2)]=(1,0,0,1)
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
+        #TODO: make it possible to create a search area at the "border" of an
+        #image right now it is necessary to create a padding for th
+        #input image
+        #search_area0 = np.random.random((*res_patch0,4))
+        #copy_img(search_area0,
+        #         target_new,#[yp:yp+res_patch0[0],xp:xp+res_patch0[1]],
+        #         -pos[::-1])
         search_area0 = target_new[yp:yp+res_patch0[0],
                                   xp:xp+res_patch0[1]].copy()
         for patch_index in np.ndindex(search_area0.shape[:2]):
@@ -971,6 +987,7 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
         co_p = np.array(idx2co(new_idx, max_co))
         #TODO: make a small local high-resolution search to find better matching
         # patches
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
         co_p0 = np.round(co_p / scaling).astype(int)
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
@@ -1013,8 +1030,10 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
             #skimage.io.imshow_collection([search_area0, search_area, target1,
             #                      patch_from_data, pa,pa0,ta0])
             break
-        
-    return target_new
+
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    return target_new[res_patch0[0]:-res_patch0[0],
+                      res_patch0[1]:-res_patch0[1]]
 
 def check_inside_face(polygon, point):
         face = shapely.geometry.Polygon(polygon)
@@ -1032,7 +1051,7 @@ if __name__ == "__main__":
     # image resolutions for the error-search
 
     #lower brightnss of bounding box for debugging ppurposes
-    if True:
+    if False:
         np.random.seed(10)
         random.seed(50)#2992)#25 is chip + original img
         target1, _, verts = generate_test_target_with_fill_mask(example0)
@@ -1042,20 +1061,29 @@ if __name__ == "__main__":
             #target1[y0:y1,x0:x1]*=(0.5,0.5,0.5,1)#mark bounding box for debugging
             target1, fill1, fill2, pgimg, bmask = fill_area_with_texture(target1, example0, v)
     
-    check_inside_face(verts[0],(55,100))
+        check_inside_face(verts[0],(55,100))
+        
     
-
-    #select two corresponding edges:
-    edges = ((verts[0][:2],verts[1][:2]),
-     (verts[0][1:3],verts[1][1:3]))
-                
-    target_new = target1
-    for e1,e2 in edges[:1]:
-        print("alter next edge")
-        target_new = make_seamless_edge((e1,verts[0]),(e2,verts[1]), 
-                                        target_new, example0)
+        #select two corresponding edges:
+        edges = ((verts[0][:2],verts[1][:2]),
+         (verts[0][1:3],verts[1][1:3]))
+                    
+        target_new = target1
+        for e1,e2 in edges[:1]:
+            print("alter next edge")
+            target_new = make_seamless_edge((e1,verts[0]),(e2,verts[1]), 
+                                            target_new, example0)
+        
+        skimage.io.imshow_collection([target_new, target1])
     
-    skimage.io.imshow_collection([target_new, target1])
+    #test image copying with "wrong" boundaries
+    if True:
+        tmp = np.full((100,100,4),(1.0,0,0,1))
+        search_area0 = np.random.random((28,28,4))
+        pos = (5,10)
+        copy_img(target=search_area0,src=tmp,pos=pos)     
+        skimage.io.imshow_collection([search_area0,tmp])
+    
     #skimage.io.imshow_collection([target_new])
     #edge_area = np.array(edgebox.boundary.coords)[:-1]
     #target1[skimage.draw.polygon(*x.boundary.xy)] *= (0.5,0.5,1.0,1.0)
