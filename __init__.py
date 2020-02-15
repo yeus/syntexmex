@@ -105,6 +105,7 @@ class make_seamless(bpy.types.Operator):
         logger.info("make UV seams seamless")
         return {'FINISHED'}
 
+#TODO: one operator to do "everything"
 class TextureUnwrapper(bpy.types.Operator):
     """This operator takes an image"""
     bl_idname = "texture.texture_unwrapper"
@@ -135,9 +136,29 @@ class syntexmex_panel(bpy.types.Panel):
 
         scene = context.scene
 
-        layout.operator("texture.synthesize_uv_islands")
-        layout.operator("texture.make_seamless")
+        #layout.box()
+        col = layout.column()
+        col.operator("texture.synthesize_uv_islands")
+        col.operator("texture.make_seamless")
+        #col.separator_spacer()
+        for prop in scene.syntexmexsettings.keys():
+            TODO: https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
+            col.prop(scene.syntexmexsettings, prop)
+        col.prop(scene.syntexmexsettings,None)
+        #TODO: make it possible to open images
+        col.template_ID(scene.syntexmexsettings, "example_image", open="image.open")
         #layout.operator("object.piperator_delete")
+
+class SyntexmexSettings(bpy.types.PropertyGroup):
+    #https://docs.blender.org/api/current/bpy.props.html
+    patch_size: bpy.props.FloatProperty(
+        name="Patch Size Ratio",
+        description="Set width of patches as a ratio of image width",
+        min=0,
+        max=1000,
+        default=10,
+    )
+    example_image: bpy.props.PointerProperty(name="Ex.Tex.", type=bpy.types.Image)
 
 
 classes = (
@@ -150,15 +171,18 @@ register_panel, unregister_panel = bpy.utils.register_classes_factory(classes)
 
 def register():
     #syntexmex_panel.register()
+    bpy.utils.register_class(SyntexmexSettings)
+    bpy.types.Scene.syntexmexsettings = bpy.props.PointerProperty(type=SyntexmexSettings)
     register_panel()
-
 
 def unregister():
     #syntexmex_panel.unregister()
     unregister_panel()
-
+    bpy.utils.unregister_class(SyntexmexSettings)
+    del(bpy.types.Scene.syntexmexsettings)
 
 if __name__ == "__main__":
+    logger.info("register syntexmex")
     # pipe_operator.register()
     # bpy.ops.mesh.add_pipes()
     register()
