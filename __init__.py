@@ -47,6 +47,7 @@ import bpy
 import os
 import sys
 import logging
+import numpy as np
 logger = logging.getLogger(__name__)
 
 """
@@ -178,14 +179,23 @@ class clear_target_texture(bpy.types.Operator):
     """Clear target texture to a generic texture"""
     bl_idname = "texture.clear_target_texture"
     bl_label = "Clear target texture"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        logger.info("make UV seams seamless")
+        logger.info("clear texture")
+        ta = context.scene.syntexmexsettings.target_tex
+        
+        target = np.zeros((ta.size[1], ta.size[0],4))
+        target[...,3]=1.0
+        
+        ta.pixels[:] = target.flatten()
+        ta.update()
+        
         return {'FINISHED'}
 
 
 #TODO: ame everything according to here:
-#https://wiki.blender.org/wiki/Reference/Release_Notes/2.80/Python_API/Addons
+#https://wiki.blender.org/wiki/Reference/Release_Na.otes/2.80/Python_API/Addons
 class syntexmex_panel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
     bl_label = "Syntexmex configuration panel"
