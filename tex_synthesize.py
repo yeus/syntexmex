@@ -42,6 +42,9 @@ sign = functools.partial(math.copysign, 1) # either of these
 #import scipy
 import shapely
 import shapely.geometry
+import logging
+logger = logging.getLogger(__name__)
+
 
 #def norm(x): return np.sqrt(x.dot(x))
 def norm(x): return np.sqrt((x*x).sum(-1))
@@ -613,14 +616,23 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
 
     return target, tas
 
+def calc_lib_scaling(res_ex, max_pixels):        
+    ex_pixels = np.prod(res_ex)
+    px_ratio = ex_pixels/max_pixels
+    scaling = 1/math.sqrt(px_ratio)
+    if scaling<1.0: return scaling
+    else: return 1.0
+
 def normalize_picture(example0, max_pixels = 256*256):
-    #max_pixels basically defines whats possible with the avialable
-    # memory & CPU power 256x256 has proved to be effective on modern systems
-    ex_pixels = np.prod(example0.shape[:2])
+    """
+    scale picture down to a maximum number of pixels
+    """
     scaling = 1.0
-    if max_pixels < ex_pixels:
-        px_ratio = ex_pixels/max_pixels
-        scaling = 1/math.sqrt(px_ratio)
+    res_ex = example0.shape[:2]
+    if max_pixels < np.prod(res_ex):
+        #max_pixels basically defines whats possible with the avialable
+        # memory & CPU power 256x256 has proved to be effective on modern systems
+        scaling = calc_lib_scaling(res_ex, max_pixels)
         print(f"resizing with scaling {scaling}")
         example = skimage.transform.rescale(example0, scaling,
         #example = skimage.transform.resize(example0, (256,256),
@@ -632,25 +644,31 @@ def normalize_picture(example0, max_pixels = 256*256):
 
     return example, scaling
 
-def create_patch_params(example0, scaling,
-                        overlap_ratio = 1/6, patch_ratio = 0.05):
+def create_patch_params2(res_ex, scaling,
+                         overlap_ratio, patch_ratio):
     """patch_ratio = #size of patches in comparison with original
     """
     #TODO: define minimum size for patches
-    res_patch2 = int(min(example0.shape[:2])*patch_ratio)
-    res_patch2 = np.array([res_patch2]*2)
-    res_patch = np.round(res_patch2*scaling).astype(int)
+    res_patch0 = int(min(res_ex)*patch_ratio)
+    res_patch0 = np.array([res_patch0]*2)
+    res_patch = np.round(res_patch0*scaling).astype(int)
     overlap = np.ceil(res_patch*overlap_ratio).astype(int)
     #res_patch2 = np.round(np.array(res_patch)/scaling).astype(int)
-    overlap2 = np.ceil(res_patch2*overlap_ratio).astype(int)
+    overlap0 = np.ceil(res_patch0*overlap_ratio).astype(int)
 
-    return res_patch, res_patch2, overlap, overlap2
+    return res_patch, res_patch0, overlap, overlap0
 
-def synth_patch_tex(target, example0, k=5):
+def create_patch_params(example0, scaling,
+                        overlap_ratio = 1/6, patch_ratio = 0.05):
+    return create_patch_params2(example0.shape[:2], scaling,
+                         overlap_ratio, patch_ratio)
 
-    example, scaling = normalize_picture(example0)
+def synth_patch_tex(target, example0, k=5, patch_ratio=0.1, libsize = 128*128):
+
+    example, scaling = normalize_picture(example0, libsize)
     res_target = target.shape[:2]
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling)
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling,
+                                                        patch_ratio=patch_ratio)
     res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
 
     print(f"patch_size: {res_patch2}\ninitial scaling: {scaling}, ")
@@ -721,6 +739,7 @@ def get_poly_levelset(verts, width=10):
     return levelset, bbox_px
 
 def fill_area_with_texture(target, example0, 
+                           patch_ratio=0.1, libsize = 128*128,
                            verts=None, mask = None, bounding_box = None):
     if bounding_box is None:
         area = shapely.geometry.Polygon(verts)
@@ -741,21 +760,28 @@ def fill_area_with_texture(target, example0,
     #area.boundary.buffer(100)
 
     print("synthesize texture")
-    fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1)
+    fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1,
+                                          patch_ratio=patch_ratio, 
+                                          libsize=libsize)
     copy_img(target, fill1, (x0,y0), bmask)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
     return target, bmask, fill1, fill2, pgimg
 
-def check_memory_requirements(example, res_patch, maxmem = 1.0):
-    patch_num=np.product(np.array(example.shape[:2]) - res_patch)
-    ch_num = example.shape[2]
-    data_memoryGB = patch_num*ch_num*example.itemsize*np.product(res_patch)*GB
-    print(f"using approx. {data_memoryGB:2f} GB in RAM.")
+def check_memory_requirements2(res_ex, res_patch, ch_num, itemsize, maxmem = 1.0):
+    patch_num=np.product(np.array(res_ex) - res_patch)
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    data_memoryGB = patch_num*ch_num*itemsize*np.product(res_patch)*GB
+    #print(f"using approx. {data_memoryGB:2f} GB in RAM.")
     if data_memoryGB > maxmem:
         raise MemoryError("the algorithm would exceed the "
                           f"maximum amount of Memory: {data_memoryGB:2f} GB,; max: {maxmem}")
     return data_memoryGB
+
+def check_memory_requirements(example, res_patch, maxmem = 1.0):
+    return check_memory_requirements2(np.array(example.shape[:2]),res_patch,
+                                      ch_num = example.shape[2], 
+                                      itemsize = example.itemsize)
 
 @timing
 def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
@@ -765,7 +791,8 @@ def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
                                                                    patch_ratio)
     max_co = np.array(example.shape[:2]) - res_patch
 
-    check_memory_requirements(example,res_patch, maxmem=1.0)
+    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0)
+    logger.info(f"using approx. {data_memoryGB:2f} GB in RAM.")
     data = create_patch_data(example, res_patch, max_co)
     tree = sklearn.neighbors.KDTree(data, metric='l2')
     return tree, res_patch, res_patch0, overlap, overlap0, max_co, scaling
@@ -907,7 +934,7 @@ def transfer_patch_pixelwise(target, search_area0,
                      #copy pixel from generated patch back to target
                     target[tuple(tmp)] = pa[patch_index]
 
-def make_seamless_edge(e1,e2, target, example0, debug_level=0):
+def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_level=0):
     (e1,verts1),(e2,verts2) = e1,e2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
@@ -918,11 +945,9 @@ def make_seamless_edge(e1,e2, target, example0, debug_level=0):
 
     #move along the edge and generate patches from information
     #from both sides of the edge
-    lib_size=128*128
+    #TODO: make overlap ratio parameterizable
     overlap_ratio = 1/6
-    patch_ratio = 0.1
-
-
+    
     (tree, res_patch,
      res_patch0, overlap,
      overlap0, max_co, 
