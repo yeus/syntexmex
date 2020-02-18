@@ -139,6 +139,7 @@ to generate the texture""",
     target_tex: bpy.props.StringProperty()
     synth_tex: bpy.props.BoolProperty(name="synthesize textures")
     seamless_UVs: bpy.props.BoolProperty(name="seamless UV islands")
+    libsize: bpy.props.IntProperty(name="patch library size")
 
     @classmethod
     def poll(cls, context):
@@ -162,9 +163,11 @@ to generate the texture""",
         
         examplebuf, targetbuf = tu.init_texture_buffers(example_image,
                                     target_tex, self.example_scaling)
-        target = tu.synthesize_textures_algorithm(examplebuf, 
+        target = tu.synthesize_textures_algorithm(examplebuf,
                                         targetbuf,
                                         bm,
+                                        self.patch_size, 
+                                        self.libsize,
                                         synth_tex=self.synth_tex,
                                         seamless_UVs=self.seamless_UVs)
         
@@ -205,6 +208,15 @@ class syntexmex_panel(bpy.types.Panel):
     bl_category = 'syntexmex'
     #bl_context = "tool"
 
+    def copy_to_operator(self, op, settings):
+        op.example_image = settings.example_image.name
+        op.target_tex = settings.target_tex.name 
+        op.example_scaling = settings.example_scaling  
+        op.libsize = settings.libsize 
+        op.patch_size = settings.patch_size 
+        op.synth_tex=True      
+        op.synth_tex=True
+    
     def draw(self, context):
         layout = self.layout
 
@@ -212,33 +224,55 @@ class syntexmex_panel(bpy.types.Panel):
 
         #layout.box()
         col = layout.column()
-        op1 = col.operator("texture.syntexmex", 
-                            text = "Synthesize UV example based texture")  
-        op1.example_image = scene.syntexmexsettings.example_image.name
-        op1.target_tex = scene.syntexmexsettings.target_tex.name 
-        op1.example_scaling=scene.syntexmexsettings.example_scaling     
+        col2 = col.column()
+        col2.scale_y = 2.0
+        op1 = col2.operator("texture.syntexmex", 
+                            text = "Synthesize UV example based texture")
+        self.copy_to_operator(op1,scene.syntexmexsettings)
         
+        #col.scale_y = 1.0
         col.separator(factor=2.0)
         op2 = col.operator("texture.syntexmex", 
                             text = "Synthesize textures to UV islands")
-        op2.example_image = scene.syntexmexsettings.example_image.name
-        op2.target_tex = scene.syntexmexsettings.target_tex.name
+        self.copy_to_operator(op2,scene.syntexmexsettings)
         op2.synth_tex=True
-        op2.example_scaling=scene.syntexmexsettings.example_scaling
         op3 = col.operator("texture.syntexmex",
                             text = "Make UV seams seamless")
-        op3.example_image = scene.syntexmexsettings.example_image.name
-        op3.target_tex = scene.syntexmexsettings.target_tex.name
-        op3.example_scaling=scene.syntexmexsettings.example_scaling
+        self.copy_to_operator(op3,scene.syntexmexsettings)
         op3.seamless_UVs=True
         
         col.separator(factor=2.0)
         col.operator("texture.clear_target_texture")
         col.separator(factor=2.0)
         #taken from here: https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
+        col.label(text="Algorithm Data:")
         b = col.box()
-        b.label(text="Algorithm Data:")
-        b.label(text="TODO")
+        b.scale_y = 0.3
+        props = scene.syntexmexsettings
+        ex_img = props.example_image
+        ta_img = props.target_tex
+        res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+        res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+        scaling = tu.ts.calc_lib_scaling(res_ex, props.libsize)
+        (res_patch, res_patch0,
+        overlap, overlap0) = tu.ts.create_patch_params2(res_ex,
+                                                     scaling,
+                                                     1/6.0, props.patch_size)
+        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
+        #                        res_patch, ch_num, )
+        mem_reqs = tu.ts.check_memory_requirements2(res_ex*scaling,
+                                      res_patch,
+                                      ch_num = 3, 
+                                      itemsize = 8)
+        b.label(text=f"memory requirements: {mem_reqs:.2f} GB")
+        b.label(text=f"source scaling: {props.example_scaling*100:.0f}%")
+        b.label(text=f"source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px")
+        b.label(text=f"target resolution: {res_ta[::-1]} px")
+        b.label(text=f"synth resolution scaling: {scaling:.2f}")
+        b.label(text=f"patches (highres): {res_patch0[::-1]} px")
+        b.label(text=f"patches (lowres): {res_patch[::-1]} px")
+        b.label(text=f"overlap (highres): {overlap0[::-1]}")
+        b.label(text=f"overlap (lowres): {overlap[::-1]}")
         col.separator(factor=2.0)
         images = ["example_image","target_tex"]
         for prop in scene.syntexmexsettings.__annotations__.keys():
@@ -276,6 +310,8 @@ to generate the texture""",
         step=1
     )
     target_tex: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
+    libsize: bpy.props.IntProperty(name="library size",
+                        description="defines the quality of the texture (higher=better, but needs more memory)", min=0, default = 128*128)
 
 
 
