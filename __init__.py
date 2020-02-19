@@ -236,9 +236,11 @@ class syntexmex_panel(bpy.types.Panel):
                             text = "Synthesize textures to UV islands")
         self.copy_to_operator(op2,scene.syntexmexsettings)
         op2.synth_tex=True
+        op2.seamless_UVs=False
         op3 = col.operator("texture.syntexmex",
                             text = "Make UV seams seamless")
         self.copy_to_operator(op3,scene.syntexmexsettings)
+        op3.synth_tex=False
         op3.seamless_UVs=True
         
         col.separator(factor=2.0)
