@@ -48,6 +48,7 @@ import os
 import sys
 import logging
 import numpy as np
+import threading, queue, time
 logger = logging.getLogger(__name__)
 
 """
@@ -103,7 +104,6 @@ bl_info = {
     "support": "TESTING",
 }
 
-
 #from operator import *
 
 # TODO: remove tabs
@@ -141,15 +141,17 @@ to generate the texture""",
     seamless_UVs: bpy.props.BoolProperty(name="seamless UV islands")
     libsize: bpy.props.IntProperty(name="patch library size")
 
+    _timer = None
+
     @classmethod
     def poll(cls, context):
         #TODO: this operator should also be able to execute in other
         # windows as well
         return context.space_data.type in {'VIEW_3D'}
     
-    def execute(self, context):
+    def run_algorithm(self, context):
         logger.info("start synthesizing algorithm")
-        scene = context.scene
+        #scene = context.scene
         
         #TODO: select specific object in menu
         obj, bm = tu.create_bmesh_from_active_object()
@@ -176,7 +178,58 @@ to generate the texture""",
         target_tex.update()
         #nt.save()
         logger.info("finished synthesizing!")
-        return {'FINISHED'}
+        #return {'FINISHED'}
+        #return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        def testworker(conn):
+            for i in range(10):
+                time.sleep(0.5)
+                logger.info(f"working thread at {i}")
+                conn.put(i)
+            logger.info("working threah finished!")        
+        
+        self.q = queue.Queue() 
+        
+        self.thread = threading.Thread(target = testworker,
+                                        daemon=True,
+                                        args = [self.q],
+                                        kwargs = {})
+        self.thread.start()
+        
+        
+        # start timer to check thread status
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(1.0, window=context.window)
+        wm.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+    
+    def modal(self, context, event):
+        #TODO: https://stackoverflow.com/questions/21409683/passing-numpy-arrays-through-multiprocessing-queue for passing images from the other (sub) process
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.cancel(context)
+            logger.info("thread was cancelled!")
+            return {'CANCELLED'}
+
+        if event.type == 'TIMER':
+            # change theme color, silly!
+            if self.thread.is_alive():
+                if not self.q.empty():
+                    #TODO: encapsulate in try/except for non-blocking get
+                    #use: .get_nowait() for this
+                    num = self.q.get()
+                    logger.info(f"received: {num}!!")
+                logger.info("thread is running...")
+            else:
+                logger.info("thread seems to have finished!")
+                return {'FINISHED'}
+
+        return {'PASS_THROUGH'}
+
+    def cancel(self, context):
+        logger.info("canceling operations!")
+        wm = context.window_manager
+        wm.event_timer_remove(self._timer)
     
 class clear_target_texture(bpy.types.Operator):
     """Clear target texture to a generic texture"""
