@@ -184,12 +184,12 @@ to generate the texture""",
     def execute(self, context):
         def testworker(conn):
             for i in range(10):
-                time.sleep(0.5)
+                time.sleep(1.0)
                 logger.info(f"working thread at {i}")
                 conn.put(i)
             logger.info("working threah finished!")        
         
-        self.q = queue.Queue() 
+        self.q = queue.Queue()
         
         self.thread = threading.Thread(target = testworker,
                                         daemon=True,
@@ -200,7 +200,7 @@ to generate the texture""",
         
         # start timer to check thread status
         wm = context.window_manager
-        self._timer = wm.event_timer_add(1.0, window=context.window)
+        self._timer = wm.event_timer_add(0.5, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
@@ -214,20 +214,31 @@ to generate the texture""",
         if event.type == 'TIMER':
             # change theme color, silly!
             if self.thread.is_alive():
-                if not self.q.empty():
-                    #TODO: encapsulate in try/except for non-blocking get
-                    #use: .get_nowait() for this
-                    num = self.q.get()
+                try:
+                    num = self.q.get_nowait()
+                except queue.Empty:
+                    num = None
+                else:
+                    self.q.task_done()
                     logger.info(f"received: {num}!!")
                 logger.info("thread is running...")
             else:
+                self.cancel(context)
                 logger.info("thread seems to have finished!")
+                try:
+                    num = self.q.get_nowait()
+                except queue.Empty:
+                    num = None
+                    logger.info("no final result?")
+                else:
+                    logger.info(f"final_result: {num}")
+                    self.q.task_done()
                 return {'FINISHED'}
 
         return {'PASS_THROUGH'}
 
     def cancel(self, context):
-        logger.info("canceling operations!")
+        logger.info("clearning up timer!")
         wm = context.window_manager
         wm.event_timer_remove(self._timer)
     
