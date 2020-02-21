@@ -49,6 +49,7 @@ import sys
 import logging
 import numpy as np
 import threading, queue, time
+import functools
 logger = logging.getLogger(__name__)
 
 """
@@ -161,25 +162,39 @@ to generate the texture""",
         print(self.target_tex)
         
         example_image = bpy.data.images[self.example_image]
-        target_tex = bpy.data.images[self.target_tex]
+        self.target_image = bpy.data.images[self.target_tex]
         
         examplebuf, targetbuf = tu.init_texture_buffers(example_image,
-                                    target_tex, self.example_scaling)
-        target = tu.synthesize_textures_algorithm(examplebuf,
-                                        targetbuf,
-                                        bm,
-                                        self.patch_size, 
-                                        self.libsize,
-                                        synth_tex=self.synth_tex,
-                                        seamless_UVs=self.seamless_UVs)
-        
+                                    self.target_image, self.example_scaling)
+                
+        self.msg_queue = queue.Queue()                            
+        args = (examplebuf,
+                targetbuf,
+                bm,
+                self.patch_size, 
+                self.libsize,
+                self.synth_tex,
+                self.seamless_UVs,
+                self.msg_queue)
+        kwargs = dict()                                           
+        synthtex = functools.partial(tu.synthesize_textures_algorithm,
+                                        *args,
+                                        **kwargs)
+                           
+        self.thread = threading.Thread(target = synthtex,
+                                        daemon=True,
+                                        args = [],
+                                        kwargs = {})
+        self.thread.start()                                      
+      
+    def write_image(self,target):
         # Write back to blender image.
-        target_tex.pixels[:] = target.flatten()
-        target_tex.update()
+        self.target_image.pixels[:] = target.flatten()
+        self.target_image.update()
         #nt.save()
-        logger.info("finished synthesizing!")
+        logger.info("synced images!")
         #return {'FINISHED'}
-        #return {'RUNNING_MODAL'}
+        #return {'RUNNING_MODAL'}"""
 
     def execute(self, context):
         def testworker(conn):
@@ -189,14 +204,7 @@ to generate the texture""",
                 conn.put(i)
             logger.info("working threah finished!")        
         
-        self.q = queue.Queue()
-        
-        self.thread = threading.Thread(target = testworker,
-                                        daemon=True,
-                                        args = [self.q],
-                                        kwargs = {})
-        self.thread.start()
-        
+        self.run_algorithm(context)
         
         # start timer to check thread status
         wm = context.window_manager
@@ -214,28 +222,27 @@ to generate the texture""",
         if event.type == 'TIMER':
             # change theme color, silly!
             if self.thread.is_alive():
-                try:
-                    num = self.q.get_nowait()
-                except queue.Empty:
-                    num = None
-                else:
-                    self.q.task_done()
-                    logger.info(f"received: {num}!!")
-                logger.info("thread is running...")
+                target = self.receive()
+                print(".", end = '')
             else:
                 self.cancel(context)
                 logger.info("thread seems to have finished!")
-                try:
-                    num = self.q.get_nowait()
-                except queue.Empty:
-                    num = None
-                    logger.info("no final result?")
-                else:
-                    logger.info(f"final_result: {num}")
-                    self.q.task_done()
+                target = self.receive()
                 return {'FINISHED'}
+            if target is not None:
+                self.write_image(target)
 
         return {'PASS_THROUGH'}
+
+    def receive(self):
+        try:
+            msg = self.msg_queue.get_nowait()
+        except queue.Empty:
+            msg = None
+        else:
+            self.msg_queue.task_done()
+            logger.info(f"received a new msg!!")
+        return msg
 
     def cancel(self, context):
         logger.info("clearning up timer!")
@@ -279,7 +286,7 @@ class syntexmex_panel(bpy.types.Panel):
         op.libsize = settings.libsize 
         op.patch_size = settings.patch_size 
         op.synth_tex=True      
-        op.synth_tex=True
+        op.seamless_UVs=True
     
     def draw(self, context):
         layout = self.layout
