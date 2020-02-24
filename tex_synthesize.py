@@ -664,7 +664,8 @@ def create_patch_params(example0, scaling,
                          overlap_ratio, patch_ratio)
 
 def synth_patch_tex(target, example0, k=5, patch_ratio=0.1, libsize = 128*128):
-
+    #TODO: merge this function with the "search" and the "optimal patch"
+    # functionality to make it similar to the "synthesize_tex_patches" function
     example, scaling = normalize_picture(example0, libsize)
     res_target = target.shape[:2]
     res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling,
@@ -738,6 +739,7 @@ def get_poly_levelset(verts, width=10):
     #levelset = np.maximum(levelset/levelset.max(),0.0)
     return levelset, bbox_px
 
+@timing
 def fill_area_with_texture(target, example0, 
                            patch_ratio=0.1, libsize = 128*128,
                            verts=None, mask = None, bounding_box = None):
@@ -899,7 +901,7 @@ def isolate_edge():
 # this means: calculate all the below things in individual matrices
 # and numpy arrays
 def transfer_patch_pixelwise(target, search_area0, 
-                             yp,xp, patch_index,
+                             yp,xp,
                              edge_info,
                              fromtarget,
                              face_source,
@@ -911,7 +913,9 @@ def transfer_patch_pixelwise(target, search_area0,
     pixel at another edge.
     """
     e1,e2,v1,v2,e2_perp_left = edge_info
-    for sub_pix in np.ndindex(sub_pixels,sub_pixels):
+
+    for patch_index in np.ndindex(search_area0.shape[:2]): 
+      for sub_pix in np.ndindex(sub_pixels,sub_pixels):
         sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
         coords = np.array((yp,xp)) + sub_idx - e1[0]
         c = coords.dot(v1)/(v1.dot(v1))#orthogonal projection of pixel on edge
@@ -934,7 +938,52 @@ def transfer_patch_pixelwise(target, search_area0,
                      #copy pixel from generated patch back to target
                     target[tuple(tmp)] = pa[patch_index]
 
-def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_level=0):
+    """y1,x1 = search_area0.shape[:2]
+    x = np.arange(0,x1,1.0/sub_pixels)
+    y = np.arange(0,y1,1.0/sub_pixels)
+    sub_pix = np.stack(np.meshgrid(y,x),axis = 2).reshape(-1,2)
+    coords_matrix = (yp,xp) + sub_pix - e1[0] #vector from uv edge to sub_pixel
+    
+    proj = proj = coords_matrix.dot(v1)/(v1.dot(v1)) #orthogonal projection of pixels on edge
+    orth_d = np.outer(proj,v1)-coords_matrix #orthogonal distance vector from edge
+    
+    isleft = (v1[1]*orth_d[:,0]-orth_d[:,1]*v1[0])>0
+    d_len = norm(orth_d)#distance of pixel from edge
+
+    #calculate corresponding pixel at other edge in reverse direction
+    # (this is why we use (1-proj))    
+    p_e2s = np.outer((1-proj),(v2)) + e2[0] #projecton on corresponding edge
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    px2_cos = p_e2s + (np.outer(d_len,e2_perp_left).T*(isleft * 2 - 1)).T#orthogonal pixel from that projection point on the edge
+    px2_cos = np.round(px2_cos).astype(int)
+    
+    #choose to transfer pixels from the left soude + a little overlap
+    #transfer_pixels = (isleft | (d_len<tol)).reshape(y1,-1)
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    #coords = np.array((yp,xp)) + sub_idx - e1[0]
+
+    if fromtarget:
+        for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
+            #import ipdb; ipdb.set_trace() # BREAKPOINT
+            if isleft:
+                patch_index = tuple(sp.astype(int))
+                search_area0[patch_index] = target[tuple(px2_coords)]
+        #left_mask = isleft.reshape(y1,-1)
+        #search_area0[left_mask] = target[px2_cos[:,1],px2_cos[:,0]][isleft]
+    else:
+        for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
+            #import ipdb; ipdb.set_trace() # BREAKPOINT
+            if isleft or (d_len<tol):
+              if check_inside_face(face_source, px2_coords, tol=tol):
+                patch_index = tuple(sp.astype(int))
+                if mask[patch_index]>0:
+                   #copy pixel from generated patch back to target
+                   target[tuple(px2_coords)] = pa[patch_index]"""
+
+@timing
+def make_seamless_edge(e1,e2, target, example0, patch_ratio, 
+                       lib_size, debug_level=0,
+                       tree_info = None):
     (e1,verts1),(e2,verts2) = e1,e2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
@@ -948,10 +997,17 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_lev
     #TODO: make overlap ratio parameterizable
     overlap_ratio = 1/6
     
-    (tree, res_patch,
-     res_patch0, overlap,
-     overlap0, max_co, 
-     scaling) = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio)
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    if tree_info is None:
+        (tree, res_patch,
+         res_patch0, overlap,
+         overlap0, max_co, 
+         scaling) = tree_info = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio)
+    else:
+        (tree, res_patch,
+         res_patch0, overlap,
+         overlap0, max_co, 
+         scaling) = tree_info
     print(f"patch_size = {res_patch0}, overlap = {overlap0}, libsize = {lib_size}")
 #    target_new = target.copy()
     #import ipdb; ipdb.set_trace() # BREAKPOINT
@@ -991,9 +1047,8 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_lev
         #         -pos[::-1])
         search_area0 = target_new[yp:yp+res_patch0[0],
                                   xp:xp+res_patch0[1]].copy()
-        for patch_index in np.ndindex(search_area0.shape[:2]):
-            transfer_patch_pixelwise(target_new, search_area0, 
-                                     yp,xp, patch_index,
+        transfer_patch_pixelwise(target_new, search_area0, 
+                                     yp,xp,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
                                      fromtarget = True,
                                      face_source = verts2,
@@ -1019,10 +1074,9 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_lev
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
-        for patch_index in np.ndindex(search_area0.shape[:2]):
-            #import ipdb; ipdb.set_trace() # BREAKPOINT
-            transfer_patch_pixelwise(target_new, search_area0, 
-                                     yp,xp, patch_index,
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
+        transfer_patch_pixelwise(target_new, search_area0, 
+                                     yp,xp,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
                                      fromtarget = False,
                                      face_source = verts2,
@@ -1054,7 +1108,7 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio, lib_size, debug_lev
 
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     return target_new[res_patch0[0]:-res_patch0[0],
-                      res_patch0[1]:-res_patch0[1]]
+                      res_patch0[1]:-res_patch0[1]], tree_info
 
 def check_inside_face(polygon, point, tol=0.0):
         face = shapely.geometry.Polygon(polygon).buffer(tol)
