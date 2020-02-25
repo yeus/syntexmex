@@ -79,8 +79,8 @@ main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib')
 sys.path.append(main_dir)
 print(main_dir)
 
-import textureunwrap as tu
-importlib.reload(tu)
+import uv_prepare as up
+importlib.reload(up)
 
 #TODO: from . import pipe_operator
 #importlib.reload(pipe_operator)
@@ -155,7 +155,7 @@ to generate the texture""",
         #scene = context.scene
         
         #TODO: select specific object in menu
-        obj, bm = tu.create_bmesh_from_active_object()
+        obj, bm = up.create_bmesh_from_active_object()
         uv_layer = bm.loops.layers.uv['UVMap']
         
         print(self.example_image)
@@ -164,7 +164,7 @@ to generate the texture""",
         example_image = bpy.data.images[self.example_image]
         self.target_image = bpy.data.images[self.target_tex]
         
-        examplebuf, targetbuf = tu.init_texture_buffers(example_image,
+        examplebuf, targetbuf = up.init_texture_buffers(example_image,
                                     self.target_image, self.example_scaling)
                 
         self.msg_queue = queue.Queue()                            
@@ -177,7 +177,7 @@ to generate the texture""",
                 self.seamless_UVs,
                 self.msg_queue)
         kwargs = dict()                                           
-        synthtex = functools.partial(tu.synthesize_textures_algorithm,
+        synthtex = functools.partial(up.synthesize_textures_algorithm,
                                         *args,
                                         **kwargs)
                            
@@ -343,14 +343,14 @@ class syntexmex_panel(bpy.types.Panel):
         ta_img = props.target_tex
         res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
         res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-        scaling = tu.ts.calc_lib_scaling(res_ex, props.libsize)
+        scaling = up.us.ts.calc_lib_scaling(res_ex, props.libsize)
         (res_patch, res_patch0,
-        overlap, overlap0) = tu.ts.create_patch_params2(res_ex,
+        overlap, overlap0) = up.us.ts.create_patch_params2(res_ex,
                                                      scaling,
                                                      1/6.0, props.patch_size)
         #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
         #                        res_patch, ch_num, )
-        mem_reqs = tu.ts.check_memory_requirements2(res_ex*scaling,
+        mem_reqs = up.us.ts.check_memory_requirements2(res_ex*scaling,
                                       res_patch,
                                       ch_num = 3, 
                                       itemsize = 8)

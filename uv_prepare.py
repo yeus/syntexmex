@@ -15,6 +15,7 @@ import skimage.io
 import skimage.transform
 import networkx as nx
 import logging
+import pickle
 logger = logging.getLogger(__name__)
 
 #def norm(x): return np.sqrt(x.dot(x))
@@ -27,8 +28,8 @@ def normalized(x): return (x.T /norm(x)).T
 main_dir = os.path.dirname(bpy.data.filepath)
 sys.path.append(main_dir)
 
-import tex_synthesize as ts
-importlib.reload(ts)
+import uv_synthesize as us
+importlib.reload(us)
 
 #from . import pipe_operator
 #importlib.reload(pipe_operator)
@@ -446,7 +447,6 @@ def generate_edge_loop_uvs(bm_edges, res, bm):
     edge_infos2 = tuple(zip(edge_uvs[:,1,:,:],face_uvs[:,1,:,:]))
     return edge_infos1,edge_infos2
 
-@ts.timing
 def synthesize_textures_algorithm(example, target, bm, 
                                   patch_ratio, libsize,
                                   synth_tex, 
@@ -473,29 +473,19 @@ def synthesize_textures_algorithm(example, target, bm,
         #TODO: make sure all islands are taken into account
         logger.info("synthesize uv islands")
         island_uvs = [get_face_uvs(bm.faces[fidx], bm) for fidx in islands[0]]
-        island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
-        #get a boundingbox for the entire island
-        ymin,xmin = island_uvs_px.min(axis = (0,1)).astype(int)-(1,1)
-        ymax,xmax = island_uvs_px.max(axis = (0,1)).astype(int)+(1,1)
-        #add .5 so that uv coordinates refer to the middle of a pixel
-        island_uvs_px = island_uvs_px + (-0.5,-0.5) 
+                
+        uv_info = {
+                "target":target,
+                "example":example,
+                "patch_ratio":patch_ratio,
+                "libsize":libsize,
+                "island_uvs":island_uvs
+                }
         
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        #target[ymin:ymax,xmin:xmax,0]=0.5
-        island_mask = np.zeros(target.shape[:2])
-        for uvs in island_uvs_px:
-            island_mask[skimage.draw.polygon(*uvs.T)]=1.0
-        island_mask = island_mask[ymin:ymax,xmin:xmax]>0
-        #target = 
-        ts.fill_area_with_texture(target, example,
-                                  patch_ratio=patch_ratio, libsize = libsize,
-                                  bounding_box=(ymin,xmin,ymax,xmax),
-                                  mask = island_mask)
-        msg_queue.put(target)
-        #fill mask
-        
-        #target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)
-        
+        with open('uv_test_island.pickle', 'wb') as handle:
+            pickle.dump(uv_info, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                
+            
         """
         for uvs in [get_face_uvs(bm.faces[fidx]) for fidx in islands[0]]:
         #for island in islands: #render texture for each island
