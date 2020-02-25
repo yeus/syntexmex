@@ -223,14 +223,12 @@ to generate the texture""",
             # change theme color, silly!
             if self.thread.is_alive():
                 target = self.receive()
-                print(".", end = '')
+                #print(".", end = '')
             else:
                 self.cancel(context)
                 logger.info("thread seems to have finished!")
-                target = self.receive()
+                self.receive()
                 return {'FINISHED'}
-            if target is not None:
-                self.write_image(target)
 
         return {'PASS_THROUGH'}
 
@@ -242,6 +240,8 @@ to generate the texture""",
         else:
             self.msg_queue.task_done()
             logger.info(f"received a new msg!!")
+        if msg is not None:
+            self.write_image(msg)
         return msg
 
     def cancel(self, context):
