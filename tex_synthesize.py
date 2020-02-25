@@ -900,7 +900,7 @@ def isolate_edge():
 #TODO: "functionalize" the below function.
 # this means: calculate all the below things in individual matrices
 # and numpy arrays
-@timing
+#@timing
 def transfer_patch_pixelwise(target, search_area0, 
                              yp,xp,
                              edge_info,
@@ -960,7 +960,7 @@ def transfer_patch_pixelwise(target, search_area0,
     
     #choose to transfer pixels from the left soude + a little overlap
     #transfer_pixels = (isleft | (d_len<tol)).reshape(y1,-1)
-    import ipdb; ipdb.set_trace() # BREAKPOINT
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
     #coords = np.array((yp,xp)) + sub_idx - e1[0]
 
     if fromtarget:
@@ -975,7 +975,7 @@ def transfer_patch_pixelwise(target, search_area0,
         for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
             #import ipdb; ipdb.set_trace() # BREAKPOINT
             if isleft or (d_len<tol):
-              #if check_inside_face(face_source, px2_coords, tol=tol):
+              if check_inside_face(face_source, px2_coords, tol=tol):
                 patch_index = tuple(sp.astype(int))
                 if mask[patch_index]>0:
                    #copy pixel from generated patch back to target
