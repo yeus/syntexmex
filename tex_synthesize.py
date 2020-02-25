@@ -900,6 +900,7 @@ def isolate_edge():
 #TODO: "functionalize" the below function.
 # this means: calculate all the below things in individual matrices
 # and numpy arrays
+@timing
 def transfer_patch_pixelwise(target, search_area0, 
                              yp,xp,
                              edge_info,
@@ -913,7 +914,7 @@ def transfer_patch_pixelwise(target, search_area0,
     pixel at another edge.
     """
     e1,e2,v1,v2,e2_perp_left = edge_info
-
+    """
     for patch_index in np.ndindex(search_area0.shape[:2]): 
       for sub_pix in np.ndindex(sub_pixels,sub_pixels):
         sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
@@ -936,9 +937,9 @@ def transfer_patch_pixelwise(target, search_area0,
             elif check_inside_face(face_source, tmp, tol=tol):
                 if mask[patch_index]>0:
                      #copy pixel from generated patch back to target
-                    target[tuple(tmp)] = pa[patch_index]
+                    target[tuple(tmp)] = pa[patch_index]"""
 
-    """y1,x1 = search_area0.shape[:2]
+    y1,x1 = search_area0.shape[:2]
     x = np.arange(0,x1,1.0/sub_pixels)
     y = np.arange(0,y1,1.0/sub_pixels)
     sub_pix = np.stack(np.meshgrid(y,x),axis = 2).reshape(-1,2)
@@ -959,7 +960,7 @@ def transfer_patch_pixelwise(target, search_area0,
     
     #choose to transfer pixels from the left soude + a little overlap
     #transfer_pixels = (isleft | (d_len<tol)).reshape(y1,-1)
-    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    import ipdb; ipdb.set_trace() # BREAKPOINT
     #coords = np.array((yp,xp)) + sub_idx - e1[0]
 
     if fromtarget:
@@ -974,11 +975,17 @@ def transfer_patch_pixelwise(target, search_area0,
         for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
             #import ipdb; ipdb.set_trace() # BREAKPOINT
             if isleft or (d_len<tol):
-              if check_inside_face(face_source, px2_coords, tol=tol):
+              #if check_inside_face(face_source, px2_coords, tol=tol):
                 patch_index = tuple(sp.astype(int))
                 if mask[patch_index]>0:
                    #copy pixel from generated patch back to target
-                   target[tuple(px2_coords)] = pa[patch_index]"""
+                   target[tuple(px2_coords)] = pa[patch_index]
+
+#cache this function as it will be very similar for many points in the
+#polygon. The function cache should be reset when the algorithm gets rerun though
+def check_inside_face(polygon, point, tol=0.0):
+        face = shapely.geometry.Polygon(polygon).buffer(tol)
+        return face.contains(shapely.geometry.Point(*point))
 
 @timing
 def make_seamless_edge(e1,e2, target, example0, patch_ratio, 
@@ -1075,6 +1082,7 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
         #import ipdb; ipdb.set_trace() # BREAKPOINT
+        #print("copy back!")
         transfer_patch_pixelwise(target_new, search_area0, 
                                      yp,xp,
                                      edge_info = (e1,e2,v1,v2,e2_perp_left),
@@ -1109,10 +1117,6 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     return target_new[res_patch0[0]:-res_patch0[0],
                       res_patch0[1]:-res_patch0[1]], tree_info
-
-def check_inside_face(polygon, point, tol=0.0):
-        face = shapely.geometry.Polygon(polygon).buffer(tol)
-        return face.contains(shapely.geometry.Point(*point))
 
 if __name__ == "__main__":
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
