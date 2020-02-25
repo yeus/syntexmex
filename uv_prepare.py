@@ -1,15 +1,7 @@
 import bpy
 import bmesh
 import numpy as np
-from mathutils import Vector as vec
-import math
 import itertools
-from itertools import cycle
-from collections import defaultdict
-import random
-import os, sys
-import shapely
-import importlib
 import skimage
 import skimage.io
 import skimage.transform
@@ -22,38 +14,6 @@ logger = logging.getLogger(__name__)
 def norm(x): return np.sqrt((x*x).sum(-1))
 #need to be transposed for correct ultiplcation along axis 1
 def normalized(x): return (x.T /norm(x)).T
-
-#main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib')
-#main_dir = os.path.dirname(os.path.abspath(__file__))
-main_dir = os.path.dirname(bpy.data.filepath)
-sys.path.append(main_dir)
-
-import uv_synthesize as us
-importlib.reload(us)
-
-#from . import pipe_operator
-#importlib.reload(pipe_operator)
-
-
-#import helpers.generationgraph as gg
-#import helpers.genutils as gu
-import helpers.mathhelp as mh
-
-#TODO: make sure to install scipy
-#programms/blender-2.81-linux-glibc217-x86_64/2.81/python/bin/python3.7m
-#- install pip:
-#    
-#    ./python3.7m -m ensurepip
-#
-#- install trimesh
-#
-#    ./python3.7m -m pip install --no-deps trimesh
-
-# debugging:
-# import ipdb; ipdb.set_trace() # BREAKPOINT
-
-
-
 
 def debug_image(img, name = None):
     if img.shape[2]<4:#add alpha channel
@@ -447,12 +407,11 @@ def generate_edge_loop_uvs(bm_edges, res, bm):
     edge_infos2 = tuple(zip(edge_uvs[:,1,:,:],face_uvs[:,1,:,:]))
     return edge_infos1,edge_infos2
 
-def synthesize_textures_algorithm(example, target, bm, 
-                                  patch_ratio, libsize,
-                                  synth_tex, 
-                                  seamless_UVs,
-                                  msg_queue):
-    logger.info("starting synthesis")
+def prepare_uv_synth_info(example, 
+                          target, bm, 
+                          patch_ratio, 
+                          libsize):
+    logger.info("generate uv synth info")
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     #generate a list of connected faces
     bm.edges.index_update()
@@ -469,82 +428,53 @@ def synthesize_textures_algorithm(example, target, bm,
         
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
-    if synth_tex: #generate initial textures
-        #TODO: make sure all islands are taken into account
-        logger.info("synthesize uv islands")
-        island_uvs = [get_face_uvs(bm.faces[fidx], bm) for fidx in islands[0]]
-                
-        uv_info = {
-                "target":target,
-                "example":example,
-                "patch_ratio":patch_ratio,
-                "libsize":libsize,
-                "island_uvs":island_uvs
-                }
-        
-        with open('uv_test_island.pickle', 'wb') as handle:
-            pickle.dump(uv_info, handle, protocol=pickle.HIGHEST_PROTOCOL)
-                
+    #TODO: make sure all islands are taken into account
+    logger.info("synthesize uv islands")
+    island_uvs = [get_face_uvs(bm.faces[fidx], bm) for fidx in islands[0]]
             
-        """
-        for uvs in [get_face_uvs(bm.faces[fidx]) for fidx in islands[0]]:
-        #for island in islands: #render texture for each island
-        #for uvs in list(get_uvs(bm).values())[:]:
-            #import ipdb; ipdb.set_trace() # BREAKPOINT
-            verts = uvs[...,::-1] * res[:2] #transform to pixel space
-            mask = 
-            #levelset, (miny, minx, maxy, maxx) = ts.get_poly_levelset(verts)
-            #target[miny:maxy,minx:maxx,0]=np.ones(w,h)
-            mask = levelset>0.0
-            target[miny:maxy,minx:maxx,:3][mask]=np.random.rand(3)*0.5+0.5
-            # import ipdb; ipdb.set_trace() # BREAKPOINT
-            #verts = np.flip(verts,1)
-            target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
-
-    if seamless_UVs:
-        #build a list of edge pairs
-        #iterate through edges
-        #https://b3d.interplanety.org/en/learning-loops/
-        bm.edges.index_update()
-        unconnected_edges = [edge for edge in bm.edges if not 
-                             loops_connected(edge, bm)]    
-
-        #TODO: zip linked faces and edge_uvs into the fitting structure for
-        #the "make_seamless_edge"-function
-
+       
+    """
+    for uvs in [get_face_uvs(bm.faces[fidx]) for fidx in islands[0]]:
+    #for island in islands: #render texture for each island
+    #for uvs in list(get_uvs(bm).values())[:]:
         #import ipdb; ipdb.set_trace() # BREAKPOINT
-        """for i in range(4):
-            v = edge_infos1[0][1][i]
-            target[skimage.draw.circle(*v,radius=5)]=(1,0,1,1)
-            v = edge_infos2[0][1][i]
-            target[skimage.draw.circle(*v,radius=5)]=(1,0,1,1)
-        e = edge_infos1[0][0]
-        target[skimage.draw.circle(r=e[0][0],c=e[0][1],radius=3)]=(1,0,1,1)
-        target[skimage.draw.circle(r=e[1][0],c=e[1][1],radius=3)]=(1,0,1,1)
-        e = edge_infos2[0][0]
-        target[skimage.draw.circle(r=e[0][0],c=e[0][1],radius=2)]=(1,0,0,1)
-        target[skimage.draw.circle(r=e[1][0],c=e[1][1],radius=2)]=(1,0,0,1)
-        """
+        verts = uvs[...,::-1] * res[:2] #transform to pixel space
+        mask = 
+        #levelset, (miny, minx, maxy, maxx) = ts.get_poly_levelset(verts)
+        #target[miny:maxy,minx:maxx,0]=np.ones(w,h)
+        mask = levelset>0.0
+        target[miny:maxy,minx:maxx,:3][mask]=np.random.rand(3)*0.5+0.5
+        # import ipdb; ipdb.set_trace() # BREAKPOINT
+        #verts = np.flip(verts,1)
+        target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
 
-        #check whether we have "left or right" sided coordinate system
-        #target[skimage.draw.circle(r=100,c=100,radius=2)]=(1,0,0,1)
-        #target[skimage.draw.circle(r=400,c=700,radius=2)]=(1,1,0,1)
+    #build a list of edge pairs
+    #iterate through edges
+    #https://b3d.interplanety.org/en/learning-loops/
+    bm.edges.index_update()
+    unconnected_edges = [edge for edge in bm.edges if not 
+                         loops_connected(edge, bm)]    
 
-        logger.info(f"using edge: {unconnected_edges[0]}")
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        edge_infos1, edge_infos2 = generate_edge_loop_uvs(unconnected_edges, 
-                                                          res, bm)
-        tree_info = None
-        for i,(e1,e2) in enumerate(zip(edge_infos1, edge_infos2)):
-            logger.info(f"making edge seamless: #{i}")
-            target, tree_info = ts.make_seamless_edge(e1, e2, target, example,
-                                           patch_ratio, libsize, 
-                                           tree_info=tree_info)
-            msg_queue.put(target)
-        #debug_image(target2)
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
+
+    logger.info(f"using edge: {unconnected_edges[0]}")
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    edge_infos1, edge_infos2 = generate_edge_loop_uvs(unconnected_edges, 
+                                                      res, bm)
         
-    return target
+    uv_info = {
+            "target":target,
+            "example":example,
+            "patch_ratio":patch_ratio,
+            "libsize":libsize,
+            "island_uvs":island_uvs,
+            "edge_infos":list(zip(edge_infos1, edge_infos2))
+            }
+    
+    logger.info("saving pickle")
+    with open('uv_test_island.pickle', 'wb') as handle:
+        pickle.dump(uv_info, handle, protocol=pickle.HIGHEST_PROTOCOL)        
+        
+    return uv_info
 
     
 """for face in bm.faces[:1]:

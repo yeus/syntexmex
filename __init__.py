@@ -73,17 +73,16 @@ def register():
 # if blend_dir not in sys.path:
 #   sys.path.append(blend_dir)
 # temporarily appends the folder containing this file into sys.path
-main_dir = os.path.dirname(bpy.data.filepath)
+main_dir = os.path.dirname(bpy.data.filepath) #blender directory
 sys.path.append(main_dir)
-main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib')
+main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib') #addon dir "__init__.py" + lib
 sys.path.append(main_dir)
 print(main_dir)
 
 import uv_prepare as up
 importlib.reload(up)
-
-#TODO: from . import pipe_operator
-#importlib.reload(pipe_operator)
+import uv_synthesize as us
+importlib.reload(us)
 
 
 __author__ = "yeus <Thomas.Meschede@web.de>"
@@ -167,25 +166,25 @@ to generate the texture""",
         examplebuf, targetbuf = up.init_texture_buffers(example_image,
                                     self.target_image, self.example_scaling)
                 
-        self.msg_queue = queue.Queue()                            
+        self.msg_queue = queue.Queue()                       
         args = (examplebuf,
                 targetbuf,
                 bm,
                 self.patch_size, 
-                self.libsize,
-                self.synth_tex,
-                self.seamless_UVs,
-                self.msg_queue)
-        kwargs = dict()                                           
-        synthtex = functools.partial(up.synthesize_textures_algorithm,
-                                        *args,
-                                        **kwargs)
-                           
+                self.libsize)
+        kwargs = dict()
+        
+        uv_info = up.prepare_uv_synth_info(*args,**kwargs)
+        synthtex = functools.partial(us.synthesize_textures_on_uvs,
+                                        synth_tex=self.synth_tex,
+                                        seamless_UVs=self.seamless_UVs,
+                                        msg_queue=self.msg_queue,
+                                        **uv_info)
         self.thread = threading.Thread(target = synthtex,
                                         daemon=True,
                                         args = [],
                                         kwargs = {})
-        self.thread.start()                                      
+        self.thread.start()
       
     def write_image(self,target):
         # Write back to blender image.
@@ -343,14 +342,14 @@ class syntexmex_panel(bpy.types.Panel):
         ta_img = props.target_tex
         res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
         res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-        scaling = up.us.ts.calc_lib_scaling(res_ex, props.libsize)
+        scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
         (res_patch, res_patch0,
-        overlap, overlap0) = up.us.ts.create_patch_params2(res_ex,
+        overlap, overlap0) = us.ts.create_patch_params2(res_ex,
                                                      scaling,
                                                      1/6.0, props.patch_size)
         #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
         #                        res_patch, ch_num, )
-        mem_reqs = up.us.ts.check_memory_requirements2(res_ex*scaling,
+        mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
                                       res_patch,
                                       ch_num = 3, 
                                       itemsize = 8)
