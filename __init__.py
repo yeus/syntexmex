@@ -267,6 +267,23 @@ class clear_target_texture(bpy.types.Operator):
         
         return {'FINISHED'}
 
+class uvs2json(bpy.types.Operator):
+    """Save UVs as json datafile"""
+    bl_idname = "texture.uvs2json"
+    bl_label = "Save UVs to json file"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        logger.info("save UVs")
+        ta = context.scene.syntexmexsettings.target_tex
+        
+        #target = np.zeros((ta.size[1], ta.size[0],4))
+        #target[...,3]=1.0
+        
+        ta.pixels[:] = target.flatten()
+        ta.update()
+        
+        return {'FINISHED'}
 
 #TODO: ame everything according to here:
 #https://wiki.blender.org/wiki/Reference/Release_Na.otes/2.80/Python_API/Addons
