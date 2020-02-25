@@ -34,9 +34,6 @@ import skimage.transform
 import math
 import functools
 sign = functools.partial(math.copysign, 1) # either of these
-#import scipy
-import shapely
-import shapely.geometry
 import logging
 logger = logging.getLogger(__name__)
 import tex_synthesize as ts
@@ -71,41 +68,33 @@ def calc_angle_vec(u, v):
     angle = np.arccos(t)
     return angle
 
-#consider replacing sklearn KDTree with scipy KDTree
-#https://jakevdp.github.io/blog/2013/04/29/benchmarking-nearest-neighbor-searches-in-python/
-#from tqdm import tqdm
 def tqdm(iterator, *args, **kwargs):
     return iterator
 
 GB = 1.0/1024**3 #GB factor
 
 @ts.timing
-def synthesize_textures_algorithm(example, target, bm, 
-                                  patch_ratio, libsize,
-                                  synth_tex, 
-                                  seamless_UVs,
-                                  msg_queue):
-    logger.info("starting synthesis")
-    #import ipdb; ipdb.set_trace() # BREAKPOINT
-    #generate a list of connected faces
-    bm.edges.index_update()
-    connected_edges = [e for e in bm.edges if loops_connected(e, bm)]
-    #build a graph of connected faces
-    connected_faces = [(e.link_faces[0].index,e.link_faces[1].index, e.index) 
-                        for e in connected_edges]
-    G = nx.Graph()
-    G.add_weighted_edges_from(connected_faces, weight='index')
-    islands = list(nx.connected_components(G))
+def synthesize_textures_on_uvs(synth_tex=False,
+                               seamless_UVs=False,
+                               msg_queue=None, 
+                               *argv, **kwargs):
+    """
+    msg_queue lets the algorithm share intermediate steps
+    when using threaded calculations (queue.Queue)
+    """
+    target = kwargs['target']
+    example = kwargs['example']
+    patch_ratio = kwargs['patch_ratio']
+    libsize = kwargs['libsize']
+    island_uvs = kwargs['island_uvs']
+    edge_infos = kwargs['edge_infos']
     
-    res = np.array(target.shape[:2])
-    #res_ex 
-        
-    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    #TODO: check whether we have "left or right" sided coordinate system
 
     if synth_tex: #generate initial textures
         #TODO: make sure all islands are taken into account
         logger.info("synthesize uv islands")
-        island_uvs = [get_face_uvs(bm.faces[fidx], bm) for fidx in islands[0]]
+        res = target.shape[:2]
         island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
         #get a boundingbox for the entire island
         ymin,xmin = island_uvs_px.min(axis = (0,1)).astype(int)-(1,1)
@@ -145,40 +134,8 @@ def synthesize_textures_algorithm(example, target, bm,
             target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
 
     if seamless_UVs:
-        #build a list of edge pairs
-        #iterate through edges
-        #https://b3d.interplanety.org/en/learning-loops/
-        bm.edges.index_update()
-        unconnected_edges = [edge for edge in bm.edges if not 
-                             loops_connected(edge, bm)]    
-
-        #TODO: zip linked faces and edge_uvs into the fitting structure for
-        #the "make_seamless_edge"-function
-
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        """for i in range(4):
-            v = edge_infos1[0][1][i]
-            target[skimage.draw.circle(*v,radius=5)]=(1,0,1,1)
-            v = edge_infos2[0][1][i]
-            target[skimage.draw.circle(*v,radius=5)]=(1,0,1,1)
-        e = edge_infos1[0][0]
-        target[skimage.draw.circle(r=e[0][0],c=e[0][1],radius=3)]=(1,0,1,1)
-        target[skimage.draw.circle(r=e[1][0],c=e[1][1],radius=3)]=(1,0,1,1)
-        e = edge_infos2[0][0]
-        target[skimage.draw.circle(r=e[0][0],c=e[0][1],radius=2)]=(1,0,0,1)
-        target[skimage.draw.circle(r=e[1][0],c=e[1][1],radius=2)]=(1,0,0,1)
-        """
-
-        #check whether we have "left or right" sided coordinate system
-        #target[skimage.draw.circle(r=100,c=100,radius=2)]=(1,0,0,1)
-        #target[skimage.draw.circle(r=400,c=700,radius=2)]=(1,1,0,1)
-
-        logger.info(f"using edge: {unconnected_edges[0]}")
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        edge_infos1, edge_infos2 = generate_edge_loop_uvs(unconnected_edges, 
-                                                          res, bm)
         tree_info = None
-        for i,(e1,e2) in enumerate(zip(edge_infos1, edge_infos2)):
+        for i,(e1,e2) in enumerate(edge_infos):
             logger.info(f"making edge seamless: #{i}")
             #TODO: add pre-calculated island mask to better find "valid" uv pixels
             target, tree_info = ts.make_seamless_edge(e1, e2, target, example,
@@ -193,3 +150,11 @@ def synthesize_textures_algorithm(example, target, bm,
 if __name__=="__main__":
     with open('uv_test_island.pickle', 'rb') as handle:
             uv_info = pickle.load(handle)
+            
+    #skimage.io.imshow_collection([uv_info["target"],uv_info["example"]])
+    
+    target = synthesize_textures_on_uvs(synth_tex=True,
+                                        seamless_UVs=True,
+                                        **uv_info)
+    skimage.io.imshow_collection([target])
+    #uv_info['edge_infos'][0]
