@@ -982,10 +982,22 @@ def transfer_patch_pixelwise(target, search_area0,
                    target[tuple(px2_coords)] = pa[patch_index]
 
 def check_inside_convex_quadrilateral(corners, p, tol=0):
+    """be careful!, because this function is based
+    on whether the coordinate system is left- or right-handed"""
     sv = np.roll(corners, 1, 0) - corners
     pv = p-corners
-    #check if point lies on left side of every side vector
-    return np.all(sv[:,0] * pv[:,1] - sv[:,1] * pv[:,0] >= 0) # > 0    
+
+    #normalized normal vetors on all edges:
+    n = normalized(sv[:,::-1]*(1,-1))
+    #orthogonal distance for all edges
+    orth_d = (pv*n).sum(axis=1)
+    #calculate distance from all edges
+    
+    return np.all(orth_d < tol)
+#    else:
+#        #check if point lies on left side of every side vector
+    #return np.all(sv[:,0] * pv[:,1] - sv[:,1] * pv[:,0] >= 0) # > 0    
+    #return True
 
 #cache this function as it will be very similar for many points in the
 #polygon. The function cache should be reset when the algorithm gets rerun though
@@ -1082,8 +1094,8 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
         if debug_level>0: #for debugging
             search_area0[:,:,0:2]=(1,1)
             pa0_r = pa0.copy()
-            pa0_r[:,:,1]=1
-            #pa[:,:,1]=1
+            pa0[:,:,0]*=0.5 #green -> "inside"
+            pa[:,:,1]*=0.5 #red -> "outside"
         
         #copy one side of the patch back to its respective face 
         #and also create a left/rght mask for masking the second part
