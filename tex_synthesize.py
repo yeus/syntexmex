@@ -88,7 +88,7 @@ def timing(f):
         ts = time.time()
         result = f(*args, **kw)
         te = time.time()
-        print(f'func:{f.__name__} took: {te-ts:2.4f} sec')
+        logger.info(f'func:{f.__name__} took: {te-ts:2.4f} sec')
         return result
     return wrap
 
@@ -334,23 +334,23 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #       augentations
     #lm = []
     try:
-        print("init kdtree1")
+        logger.info("init kdtree1")
         l = create_patch_data(example, (rp[0], overlap[1]), max_co)
         l = sklearn.neighbors.KDTree(l, metric='l2')
-        print("init kdtree2")
+        logger.info("init kdtree2")
         t = create_patch_data(example, (overlap[0],rp[1]), max_co)
         t = sklearn.neighbors.KDTree(t, metric='l2')
-        print("init kdtree3")
+        logger.info("init kdtree3")
         lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
                                                 t.get_arrays()[0])),
                                       metric='l2')
         #TODO: check memory consumption of KDTrees
         #sklearn.neighbors.KDTree.valid_metrics
         #ov_db = [sklearn.neighbors.KDTree(i, metric='euclidean') for i in (ov_l, ov_t, ov_lt)]
-        print("KD-Tree initialization done")
+        logger.info("KD-Tree initialization done")
     except MemoryError as err:
-        print(err)
-        print("example texture too large, algorithm needs "
+        logger.info(err)
+        logger.info("example texture too large, algorithm needs "
            "too much RAM: {totalmemoryGB:.2f}GB")
         raise
 
@@ -508,10 +508,10 @@ def create_mask_tree(img, kind="causal5x3"):
         mask_center = (1,1) #starting index from 0
     else: raise ValueError(f"kind: {kind} is unknown")
 
-    print("generating patches")
+    logger.info("generating patches")
     m_patches, max_co, idx2co = gen_patches_from_mask(img,mask)
     #build local neighbourdhood KDTree for pyramid level
-    print("generating tree from patches")
+    logger.info("generating tree from patches")
     tree = sklearn.neighbors.KDTree(m_patches, metric='l2')
     return tree, mask, mask_center, idx2co
 
@@ -610,7 +610,7 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
     target = mask_synthesize_pixel(start_level, example, seed, py)
     tas.append(target)
     for level in range(start_level+1,len(py)):
-        print(f"\nstarting next level calculation: {level}\n")
+        logger.info(f"\nstarting next level calculation: {level}\n")
         target = mask_synthesize_pixel(level, example, seed, py, target)
         tas.append(target)
 
@@ -633,7 +633,7 @@ def normalize_picture(example0, max_pixels = 256*256):
         #max_pixels basically defines whats possible with the avialable
         # memory & CPU power 256x256 has proved to be effective on modern systems
         scaling = calc_lib_scaling(res_ex, max_pixels)
-        print(f"resizing with scaling {scaling}")
+        logger.info(f"resizing with scaling {scaling}")
         example = skimage.transform.rescale(example0, scaling,
         #example = skimage.transform.resize(example0, (256,256),
                                             anti_aliasing=True,
@@ -672,7 +672,7 @@ def synth_patch_tex(target, example0, k=5, patch_ratio=0.1, libsize = 128*128):
                                                         patch_ratio=patch_ratio)
     res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
 
-    print(f"patch_size: {res_patch2}\ninitial scaling: {scaling}, ")
+    logger.info(f"patch_size: {res_patch2}; initial scaling: {scaling}, ")
 
     #time.sleep(10.0)
 
@@ -761,7 +761,7 @@ def fill_area_with_texture(target, example0,
     #bmask2 = mask[y0:y1,x0:x1]>0
     #area.boundary.buffer(100)
 
-    print("synthesize texture")
+    logger.info("synthesize texture")
     fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1,
                                           patch_ratio=patch_ratio, 
                                           libsize=libsize)
@@ -975,11 +975,17 @@ def transfer_patch_pixelwise(target, search_area0,
         for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
             #import ipdb; ipdb.set_trace() # BREAKPOINT
             if isleft or (d_len<tol):
-              if check_inside_face(face_source, px2_coords, tol=tol):
+              if check_inside_convex_quadrilateral(face_source, px2_coords, tol=tol):
                 patch_index = tuple(sp.astype(int))
                 if mask[patch_index]>0:
                    #copy pixel from generated patch back to target
                    target[tuple(px2_coords)] = pa[patch_index]
+
+def check_inside_convex_quadrilateral(corners, p, tol=0):
+    sv = np.roll(corners, 1, 0) - corners
+    pv = p-corners
+    #check if point lies on left side of every side vector
+    return np.all(sv[:,0] * pv[:,1] - sv[:,1] * pv[:,0] >= 0) # > 0    
 
 #cache this function as it will be very similar for many points in the
 #polygon. The function cache should be reset when the algorithm gets rerun though
@@ -1015,7 +1021,7 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
          res_patch0, overlap,
          overlap0, max_co, 
          scaling) = tree_info
-    print(f"patch_size = {res_patch0}, overlap = {overlap0}, libsize = {lib_size}")
+    logger.info(f"patch_size = {res_patch0}, overlap = {overlap0}, libsize = {lib_size}")
 #    target_new = target.copy()
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     target_new = np.pad(target.copy(),((res_patch0[0],res_patch0[0]),
@@ -1098,7 +1104,7 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
         mask_inside = np.zeros(search_area0.shape[:2])
         for patch_index in np.ndindex(search_area0.shape[:2]):
             coords = patch_index + np.array((yp,xp))
-            mask_inside[patch_index] = check_inside_face(verts1,coords, tol=tol)
+            mask_inside[patch_index] = check_inside_convex_quadrilateral(verts1,coords, tol=tol)
             
         #copy only the right side to its place
         #mask_right_optimal = mask_sides==0
@@ -1149,7 +1155,7 @@ if __name__ == "__main__":
                     
         target_new = target1
         for e1,e2 in edges[:1]:
-            print("alter next edge")
+            logger.info("alter next edge")
             target_new = make_seamless_edge((e1,verts[0]),(e2,verts[1]), 
                                             target_new, example0)
         
