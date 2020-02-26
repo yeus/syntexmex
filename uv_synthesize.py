@@ -88,6 +88,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
     libsize = kwargs['libsize']
     island_uvs = kwargs['island_uvs']
     edge_infos = kwargs['edge_infos']
+    if msg_queue is None: msg_queue=False
     
     #TODO: check whether we have "left or right" sided coordinate system
 
@@ -113,7 +114,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                   patch_ratio=patch_ratio, libsize = libsize,
                                   bounding_box=(ymin,xmin,ymax,xmax),
                                   mask = island_mask)
-        msg_queue.put(target)
+        if msg_queue: msg_queue.put(target)
         #fill mask
         
         #target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)
@@ -141,13 +142,15 @@ def synthesize_textures_on_uvs(synth_tex=False,
             target, tree_info = ts.make_seamless_edge(e1, e2, target, example,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info)
-            msg_queue.put(target)
+            if msg_queue: msg_queue.put(target)
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
     return target
     
 if __name__=="__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    
     with open('uv_test_island.pickle', 'rb') as handle:
             uv_info = pickle.load(handle)
             
