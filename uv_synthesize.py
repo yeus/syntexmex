@@ -76,7 +76,8 @@ GB = 1.0/1024**3 #GB factor
 @ts.timing
 def synthesize_textures_on_uvs(synth_tex=False,
                                seamless_UVs=False,
-                               msg_queue=None, 
+                               msg_queue=None,
+                               edge_iterations=0,
                                *argv, **kwargs):
     """
     msg_queue lets the algorithm share intermediate steps
@@ -141,12 +142,18 @@ def synthesize_textures_on_uvs(synth_tex=False,
             #TODO: add pre-calculated island mask to better find "valid" uv pixels
             target, tree_info = ts.make_seamless_edge(e1, e2, target, example,
                                            patch_ratio, libsize, 
-                                           tree_info=tree_info)
+                                           tree_info=tree_info,
+                                           debug_level=0)
             if msg_queue: msg_queue.put(target)
+            if (edge_iterations != 0) and (i >= edge_iterations): break 
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
     return target
+
+def check_face_orientation(face):
+    edge_vecs = np.roll(face,1,0)-face
+    return np.cross(np.roll(edge_vecs,1,0),edge_vecs)
     
 if __name__=="__main__":
     logging.basicConfig(level=logging.DEBUG)
@@ -158,6 +165,12 @@ if __name__=="__main__":
     
     target = synthesize_textures_on_uvs(synth_tex=True,
                                         seamless_UVs=True,
+                                        edge_iterations=0,
                                         **uv_info)
     skimage.io.imshow_collection([target])
     #uv_info['edge_infos'][0]
+
+    #faces = uv_info['island_uvs']
+    
+    #[check_face_orientation(f) for f in faces]
+    
