@@ -915,6 +915,8 @@ def transfer_patch_pixelwise(target, search_area0,
     """
     e1,e2,v1,v2,e2_perp_left = edge_info
     """
+    TODO: the below version is still present, as it might
+    be preferable to do a loop-based version using cython
     for patch_index in np.ndindex(search_area0.shape[:2]): 
       for sub_pix in np.ndindex(sub_pixels,sub_pixels):
         sub_idx =  np.array(patch_index) + np.array(sub_pix)/sub_pixels
@@ -979,11 +981,13 @@ def transfer_patch_pixelwise(target, search_area0,
                 patch_index = tuple(sp.astype(int))
                 if mask[patch_index]>0:
                    #copy pixel from generated patch back to target
+                   #target[tuple(px2_coords)][:3] = pa[patch_index][:3]*mask[patch_index]
                    target[tuple(px2_coords)] = pa[patch_index]
 
 def check_inside_convex_quadrilateral(corners, p, tol=0):
     """be careful!, because this function is based
     on whether the coordinate system is left- or right-handed"""
+    #TODO: vectorize this function or make some cython-magic
     sv = np.roll(corners, 1, 0) - corners
     pv = p-corners
 
@@ -1070,6 +1074,7 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
         #copy_img(search_area0,
         #         target_new,#[yp:yp+res_patch0[0],xp:xp+res_patch0[1]],
         #         -pos[::-1])
+        #TODO: fill search area "empty spaces" (outside uv island) with better pixels
         search_area0 = target_new[yp:yp+res_patch0[0],
                                   xp:xp+res_patch0[1]].copy()
         transfer_patch_pixelwise(target_new, search_area0, 
@@ -1127,10 +1132,10 @@ def make_seamless_edge(e1,e2, target, example0, patch_ratio,
         #if counter == 2:
         if False:#debug_level>0:#counter == 2:
             #patch_from_data = data[new_idx].reshape(*res_patch,4)
-            skimage.io.imshow_collection([search_area0, pa, mask_inside])
+            skimage.io.imshow_collection([search_area0, pa, mask, pa0, mask_inside])
             #skimage.io.imshow_collection([search_area0, search_area, target1,
             #                      patch_from_data, pa,pa0,ta0])
-            break
+            #break
 
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     return target_new[res_patch0[0]:-res_patch0[0],
