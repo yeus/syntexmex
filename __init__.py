@@ -165,10 +165,10 @@ to generate the texture""",
         print(self.target_image)
         
         example_image = bpy.data.images[self.example_image]
-        self.target_image = bpy.data.images[self.target_image]
+        self.target = bpy.data.images[self.target_image]
         
         examplebuf, targetbuf = up.init_texture_buffers(example_image,
-                                    self.target_image, self.example_scaling)
+                                                        self.target, self.example_scaling)
                 
         self.msg_queue = queue.Queue()                       
         args = (examplebuf,
@@ -179,6 +179,8 @@ to generate the texture""",
         kwargs = dict()
         
         uv_info = up.prepare_uv_synth_info(*args,**kwargs)
+        self.algorithm_steps=len(uv_info['edge_infos'])
+        self.perc = 0.0
         synthtex = functools.partial(us.synthesize_textures_on_uvs,
                                         synth_tex=self.synth_tex,
                                         seamless_UVs=self.seamless_UVs,
@@ -192,8 +194,8 @@ to generate the texture""",
       
     def write_image(self,target):
         # Write back to blender image.
-        self.target_image.pixels[:] = target.flatten()
-        self.target_image.update()
+        self.target.pixels[:] = target.flatten()
+        self.target.update()
         #nt.save()
         logger.info("synced images!")
         #return {'FINISHED'}
@@ -225,17 +227,17 @@ to generate the texture""",
         if event.type == 'TIMER':
             # change theme color, silly!
             if self.thread.is_alive():
-                target = self.receive()
+                target = self.receive(context)
                 #print(".", end = '')
             else:
                 self.cancel(context)
                 logger.info("thread seems to have finished!")
-                self.receive()
+                self.receive(context)
                 return {'FINISHED'}
 
         return {'PASS_THROUGH'}
 
-    def receive(self):
+    def receive(self, context):
         try:
             msg = self.msg_queue.get_nowait()
         except queue.Empty:
@@ -245,6 +247,8 @@ to generate the texture""",
             logger.info(f"received a new msg!!")
         if msg is not None:
             self.write_image(msg)
+            self.perc += 1.0/self.algorithm_steps
+            context.scene.syntexmexsettings.synth_progress=self.perc
         return msg
 
     def cancel(self, context):
@@ -322,18 +326,18 @@ class syntexmex_panel(bpy.types.Panel):
         col2.scale_y = 2.0
         op1 = col2.operator("texture.syntexmex", 
                             text = "Synthesize UV example based texture")
-        #self.copy_to_operator(op1,scene.syntexmexsettings)
+        self.copy_to_operator(op1,scene.syntexmexsettings)
         
         #col.scale_y = 1.0
         col.separator(factor=2.0)
         op2 = col.operator("texture.syntexmex", 
                             text = "Synthesize textures to UV islands")
-        #self.copy_to_operator(op2,scene.syntexmexsettings)
+        self.copy_to_operator(op2,scene.syntexmexsettings)
         op2.synth_tex=True
         op2.seamless_UVs=False
         op3 = col.operator("texture.syntexmex",
                             text = "Make UV seams seamless")
-        #self.copy_to_operator(op3,scene.syntexmexsettings)
+        self.copy_to_operator(op3,scene.syntexmexsettings)
         op3.synth_tex=False
         op3.seamless_UVs=True
         
