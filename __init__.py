@@ -109,6 +109,10 @@ bl_info = {
 # TODO: remove tabs
 # https://blender.stackexchange.com/questions/97502/removing-tabs-from-tool-shelf-t-key/97503#97503
 
+def multiline_label(layout,text):
+    for t in text.split("\n"):
+        layout.label(text=t)
+
 class syntexmex(bpy.types.Operator):
     """This operator synthesizes texture in various ways on UV textures"""
     bl_idname = "texture.syntexmex"
@@ -136,7 +140,7 @@ to generate the texture""",
         precision=3,
         step=1
     )
-    target_tex: bpy.props.StringProperty()
+    target_image: bpy.props.StringProperty()
     synth_tex: bpy.props.BoolProperty(name="synthesize textures")
     seamless_UVs: bpy.props.BoolProperty(name="seamless UV islands")
     libsize: bpy.props.IntProperty(name="patch library size")
@@ -158,10 +162,10 @@ to generate the texture""",
         uv_layer = bm.loops.layers.uv['UVMap']
         
         print(self.example_image)
-        print(self.target_tex)
+        print(self.target_image)
         
         example_image = bpy.data.images[self.example_image]
-        self.target_image = bpy.data.images[self.target_tex]
+        self.target_image = bpy.data.images[self.target_image]
         
         examplebuf, targetbuf = up.init_texture_buffers(example_image,
                                     self.target_image, self.example_scaling)
@@ -256,7 +260,7 @@ class clear_target_texture(bpy.types.Operator):
 
     def execute(self, context):
         logger.info("clear texture")
-        ta = context.scene.syntexmexsettings.target_tex
+        ta = context.scene.syntexmexsettings.target_image
         
         target = np.zeros((ta.size[1], ta.size[0],4))
         target[...,3]=1.0
@@ -274,7 +278,7 @@ class uvs2json(bpy.types.Operator):
 
     def execute(self, context):
         logger.info("save UVs")
-        ta = context.scene.syntexmexsettings.target_tex
+        ta = context.scene.syntexmexsettings.target_image
         
         #target = np.zeros((ta.size[1], ta.size[0],4))
         #target[...,3]=1.0
@@ -297,7 +301,7 @@ class syntexmex_panel(bpy.types.Panel):
 
     def copy_to_operator(self, op, settings):
         op.example_image = settings.example_image.name
-        op.target_tex = settings.target_tex.name 
+        op.target_image = settings.target_image.name 
         op.example_scaling = settings.example_scaling  
         op.libsize = settings.libsize 
         op.patch_size = settings.patch_size 
@@ -312,21 +316,24 @@ class syntexmex_panel(bpy.types.Panel):
         #layout.box()
         col = layout.column()
         col2 = col.column()
+        col2.prop(scene.syntexmexsettings, "synth_progress")
+        col2.enabled=False
+        col2 = col.column()
         col2.scale_y = 2.0
         op1 = col2.operator("texture.syntexmex", 
                             text = "Synthesize UV example based texture")
-        self.copy_to_operator(op1,scene.syntexmexsettings)
+        #self.copy_to_operator(op1,scene.syntexmexsettings)
         
         #col.scale_y = 1.0
         col.separator(factor=2.0)
         op2 = col.operator("texture.syntexmex", 
                             text = "Synthesize textures to UV islands")
-        self.copy_to_operator(op2,scene.syntexmexsettings)
+        #self.copy_to_operator(op2,scene.syntexmexsettings)
         op2.synth_tex=True
         op2.seamless_UVs=False
         op3 = col.operator("texture.syntexmex",
                             text = "Make UV seams seamless")
-        self.copy_to_operator(op3,scene.syntexmexsettings)
+        #self.copy_to_operator(op3,scene.syntexmexsettings)
         op3.synth_tex=False
         op3.seamless_UVs=True
         
@@ -339,38 +346,47 @@ class syntexmex_panel(bpy.types.Panel):
         b.scale_y = 0.3
         props = scene.syntexmexsettings
         ex_img = props.example_image
-        ta_img = props.target_tex
-        res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-        res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-        scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
-        (res_patch, res_patch0,
-        overlap, overlap0) = us.ts.create_patch_params2(res_ex,
+        ta_img = props.target_image
+        if (ex_img is not None) and (ta_img is not None):
+            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
+            (res_patch, res_patch0,
+            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
                                                      scaling,
                                                      1/6.0, props.patch_size)
         #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
         #                        res_patch, ch_num, )
-        mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
+            mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
                                       res_patch,
                                       ch_num = 3, 
                                       itemsize = 8)
-        b.label(text=f"memory requirements: {mem_reqs:.2f} GB")
-        b.label(text=f"source scaling: {props.example_scaling*100:.0f}%")
-        b.label(text=f"source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px")
-        b.label(text=f"target resolution: {res_ta[::-1]} px")
-        b.label(text=f"synth resolution scaling: {scaling:.2f}")
-        b.label(text=f"patches (highres): {res_patch0[::-1]} px")
-        b.label(text=f"patches (lowres): {res_patch[::-1]} px")
-        b.label(text=f"overlap (highres): {overlap0[::-1]}")
-        b.label(text=f"overlap (lowres): {overlap[::-1]}")
+            multiline_label(b,f"""memory requirements: {mem_reqs:.2f} GB
+source scaling: {props.example_scaling*100:.0f}%
+source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px
+target resolution: {res_ta[::-1]} px
+synth resolution scaling: {scaling:.2f}
+patches (highres): {res_patch0[::-1]} px
+patches (lowres): {res_patch[::-1]} px
+overlap (highres): {overlap0[::-1]}
+overlap (lowres): {overlap[::-1]}""")
+        else:
+            multiline_label(b,"please choose a target &\n example image")
         col.separator(factor=2.0)
-        images = ["example_image","target_tex"]
-        for prop in scene.syntexmexsettings.__annotations__.keys():
-            if prop in images:
-                col.label(text=prop)
-                col.template_ID(scene.syntexmexsettings, prop, 
-                                new="image.new",open="image.open")
-            else:
-                col.prop(scene.syntexmexsettings, prop)
+        #for prop in scene.syntexmexsettings.__annotations__.keys():
+        #    if prop in images:
+        col.label(text="Example Image:")
+        col.template_ID(scene.syntexmexsettings, "example_image", 
+                        new="image.new",open="image.open")
+
+        col.label(text="Target Image:")
+        col.template_ID(scene.syntexmexsettings, "target_image", 
+                        new="image.new",open="image.open")
+
+        col.separator(factor=2.0)
+        col.prop(scene.syntexmexsettings, "patch_size")
+        col.prop(scene.syntexmexsettings, "example_scaling")
+        col.prop(scene.syntexmexsettings, "libsize")
         #col.prop(scene.syntexmexsettings,None)
         #TODO: make it possible to open images
         #
@@ -378,6 +394,12 @@ class syntexmex_panel(bpy.types.Panel):
 
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
+    synth_progress: bpy.props.FloatProperty(
+        name="synthetization progress",
+        description="synthetization progress",
+        min=0.0,max=1.0,
+        subtype = "PERCENTAGE"
+        )
     patch_size: bpy.props.FloatProperty(
         name="Patch Size Ratio",
         description="Set width of patches as a ratio of shortest edge of an image",
@@ -386,7 +408,7 @@ class SyntexmexSettings(bpy.types.PropertyGroup):
         default=0.1,
         precision=3,
         step=0.1
-    )
+        )
     example_image: bpy.props.PointerProperty(name="Ex.Tex.", type=bpy.types.Image)
     example_scaling: bpy.props.FloatProperty(
         name="Example Scaling",
@@ -398,7 +420,7 @@ to generate the texture""",
         precision=3,
         step=1
     )
-    target_tex: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
+    target_image: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
     libsize: bpy.props.IntProperty(name="library size",
                         description="defines the quality of the texture (higher=better, but needs more memory)", min=0, default = 128*128)
 
@@ -417,12 +439,14 @@ def register():
     bpy.utils.register_class(SyntexmexSettings)
     bpy.types.Scene.syntexmexsettings = bpy.props.PointerProperty(type=SyntexmexSettings)
     register_panel()
+    #init propertygroup
 
 def unregister():
     #syntexmex_panel.unregister()
     unregister_panel()
     bpy.utils.unregister_class(SyntexmexSettings)
     del(bpy.types.Scene.syntexmexsettings)
+    #del(bpy.context.scene['syntexmexsettings'])
 
 if __name__ == "__main__":
     logger.info("register syntexmex")
