@@ -77,6 +77,7 @@ GB = 1.0/1024**3 #GB factor
 def synthesize_textures_on_uvs(synth_tex=False,
                                seamless_UVs=False,
                                msg_queue=None,
+                               stop_event=None,
                                edge_iterations=0,
                                *argv, **kwargs):
     """
@@ -135,6 +136,10 @@ def synthesize_textures_on_uvs(synth_tex=False,
             #verts = np.flip(verts,1)
             target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
 
+    if stop_event.is_set(): 
+        logger.info("stopping_thread")
+        return
+
     if seamless_UVs:
         tree_info = None
         for i,(e1,e2) in enumerate(edge_infos):
@@ -146,6 +151,9 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                            debug_level=0)
             if msg_queue: msg_queue.put(target)
             if (edge_iterations != 0) and (i >= edge_iterations): break 
+            if stop_event.is_set(): 
+                logger.info("stopping_thread")
+                return
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         

@@ -181,16 +181,18 @@ to generate the texture""",
         uv_info = up.prepare_uv_synth_info(*args,**kwargs)
         self.algorithm_steps=len(uv_info['edge_infos'])
         self.perc = 0.0
+        self._killthread = threading.Event()
         synthtex = functools.partial(us.synthesize_textures_on_uvs,
                                         synth_tex=self.synth_tex,
                                         seamless_UVs=self.seamless_UVs,
                                         msg_queue=self.msg_queue,
+                                        stop_event=self._killthread,
                                         **uv_info)
-        self.thread = threading.Thread(target = synthtex,
+        self._thread = threading.Thread(target = synthtex,
                                         daemon=True,
                                         args = [],
                                         kwargs = {})
-        self.thread.start()
+        self._thread.start()
       
     def write_image(self,target):
         # Write back to blender image.
@@ -229,7 +231,7 @@ to generate the texture""",
 
         if event.type == 'TIMER':
             # change theme color, silly!
-            if self.thread.is_alive():
+            if self._thread.is_alive():
                 target = self.receive(context)
                 #print(".", end = '')
             else:
@@ -258,6 +260,7 @@ to generate the texture""",
 
     def cancel(self, context):
         logger.info("cleaning up timer!")
+        self._killthread.set()
         context.scene.syntexmexsettings.synth_progress=0.0
         self._region.tag_redraw()
         self._area.tag_redraw()
