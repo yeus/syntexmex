@@ -215,6 +215,9 @@ to generate the texture""",
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.5, window=context.window)
         wm.modal_handler_add(self)
+        context.scene.syntexmexsettings.synth_progress=0.05
+        self._region = context.region
+        self._area = context.area
         return {'RUNNING_MODAL'}
     
     def modal(self, context, event):
@@ -230,9 +233,9 @@ to generate the texture""",
                 target = self.receive(context)
                 #print(".", end = '')
             else:
-                self.cancel(context)
                 logger.info("thread seems to have finished!")
                 self.receive(context)
+                self.cancel(context)
                 return {'FINISHED'}
 
         return {'PASS_THROUGH'}
@@ -249,17 +252,22 @@ to generate the texture""",
             self.write_image(msg)
             self.perc += 1.0/self.algorithm_steps
             context.scene.syntexmexsettings.synth_progress=self.perc
+            self._region.tag_redraw()
+            self._area.tag_redraw()
         return msg
 
     def cancel(self, context):
-        logger.info("clearning up timer!")
+        logger.info("cleaning up timer!")
+        context.scene.syntexmexsettings.synth_progress=0.0
+        self._region.tag_redraw()
+        self._area.tag_redraw()
         wm = context.window_manager
         wm.event_timer_remove(self._timer)
     
 class clear_target_texture(bpy.types.Operator):
-    """Clear target texture to a generic texture"""
+    """Clear target texture to make it black"""
     bl_idname = "texture.clear_target_texture"
-    bl_label = "Clear target texture"
+    bl_label = "Clear target texture (black)"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -322,50 +330,51 @@ class syntexmex_panel(bpy.types.Panel):
         col2 = col.column()
         col2.prop(scene.syntexmexsettings, "synth_progress")
         col2.enabled=False
-        col2 = col.column()
-        col2.scale_y = 2.0
-        op1 = col2.operator("texture.syntexmex", 
-                            text = "Synthesize UV example based texture")
-        self.copy_to_operator(op1,scene.syntexmexsettings)
-        
-        #col.scale_y = 1.0
         col.separator(factor=2.0)
-        op2 = col.operator("texture.syntexmex", 
-                            text = "Synthesize textures to UV islands")
-        self.copy_to_operator(op2,scene.syntexmexsettings)
-        op2.synth_tex=True
-        op2.seamless_UVs=False
-        op3 = col.operator("texture.syntexmex",
-                            text = "Make UV seams seamless")
-        self.copy_to_operator(op3,scene.syntexmexsettings)
-        op3.synth_tex=False
-        op3.seamless_UVs=True
-        
-        col.separator(factor=2.0)
-        col.operator("texture.clear_target_texture")
-        col.separator(factor=2.0)
-        #taken from here: https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
-        col.label(text="Algorithm Data:")
-        b = col.box()
-        b.scale_y = 0.3
-        props = scene.syntexmexsettings
-        ex_img = props.example_image
-        ta_img = props.target_image
-        if (ex_img is not None) and (ta_img is not None):
-            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
-            (res_patch, res_patch0,
-            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
-                                                     scaling,
-                                                     1/6.0, props.patch_size)
-        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
-        #                        res_patch, ch_num, )
-            mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
-                                      res_patch,
-                                      ch_num = 3, 
-                                      itemsize = 8)
-            multiline_label(b,f"""memory requirements: {mem_reqs:.2f} GB
+        if scene.syntexmexsettings.synth_progress < 0.0001: #if algorithm isn running
+            props = scene.syntexmexsettings
+            ex_img = props.example_image
+            ta_img = props.target_image
+            if (ex_img is not None) and (ta_img is not None):
+                col2 = col.column()
+                col2.scale_y = 2.0
+                op1 = col2.operator("texture.syntexmex", 
+                                    text = "Synthesize UV example based texture")
+                self.copy_to_operator(op1,scene.syntexmexsettings)
+                
+                #col.scale_y = 1.0
+                col.separator(factor=2.0)
+                op2 = col.operator("texture.syntexmex", 
+                                    text = "Synthesize textures to UV islands")
+                self.copy_to_operator(op2,scene.syntexmexsettings)
+                op2.synth_tex=True
+                op2.seamless_UVs=False
+                op3 = col.operator("texture.syntexmex",
+                                    text = "Make UV seams seamless")
+                self.copy_to_operator(op3,scene.syntexmexsettings)
+                op3.synth_tex=False
+                op3.seamless_UVs=True
+                
+                col.separator(factor=2.0)
+                #taken from here: https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
+                col.label(text="Algorithm Data:")
+                b = col.box()
+                b.scale_y = 0.3
+
+                res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+                res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+                scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
+                (res_patch, res_patch0,
+                overlap, overlap0) = us.ts.create_patch_params2(res_ex,
+                                                         scaling,
+                                                         1/6.0, props.patch_size)
+            #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
+            #                        res_patch, ch_num, )
+                mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
+                                          res_patch,
+                                          ch_num = 3, 
+                                          itemsize = 8)
+                multiline_label(b,f"""memory requirements: {mem_reqs:.2f} GB
 source scaling: {props.example_scaling*100:.0f}%
 source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px
 target resolution: {res_ta[::-1]} px
@@ -374,27 +383,32 @@ patches (highres): {res_patch0[::-1]} px
 patches (lowres): {res_patch[::-1]} px
 overlap (highres): {overlap0[::-1]}
 overlap (lowres): {overlap[::-1]}""")
-        else:
-            multiline_label(b,"please choose a target &\n example image")
-        col.separator(factor=2.0)
-        #for prop in scene.syntexmexsettings.__annotations__.keys():
-        #    if prop in images:
-        col.label(text="Example Image:")
-        col.template_ID(scene.syntexmexsettings, "example_image", 
-                        new="image.new",open="image.open")
+            else:
+                b = col.box()
+                b.scale_y = 0.3
+                multiline_label(b,">>> please choose a target &\nexample image")
+                
+            col.separator(factor=2.0)
+            #for prop in scene.syntexmexsettings.__annotations__.keys():
+            #    if prop in images:
+            col.label(text="Example Image:")
+            col.template_ID(scene.syntexmexsettings, "example_image", 
+                            new="image.new",open="image.open")
 
-        col.label(text="Target Image:")
-        col.template_ID(scene.syntexmexsettings, "target_image", 
-                        new="image.new",open="image.open")
+            col.label(text="Target Image:")
+            col.template_ID(scene.syntexmexsettings, "target_image", 
+                            new="image.new",open="image.open")
+            if (ta_img is not None):
+                col.operator("texture.clear_target_texture")
 
-        col.separator(factor=2.0)
-        col.prop(scene.syntexmexsettings, "patch_size")
-        col.prop(scene.syntexmexsettings, "example_scaling")
-        col.prop(scene.syntexmexsettings, "libsize")
-        #col.prop(scene.syntexmexsettings,None)
-        #TODO: make it possible to open images
-        #
-        #layout.operator("object.piperator_delete")
+            col.separator(factor=2.0)
+            col.prop(scene.syntexmexsettings, "patch_size")
+            col.prop(scene.syntexmexsettings, "example_scaling")
+            col.prop(scene.syntexmexsettings, "libsize")
+            #col.prop(scene.syntexmexsettings,None)
+            #TODO: make it possible to open images
+            #
+            #layout.operator("object.piperator_delete")
 
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
