@@ -156,7 +156,11 @@ def check_face_orientation(face):
     return np.cross(np.roll(edge_vecs,1,0),edge_vecs)
     
 if __name__=="__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
+    logger.setLevel(logging.INFO)
+    logging.getLogger('tex_synthesize').setLevel(logging.INFO)
+
+    #logging.get
     
     with open('uv_test_island.pickle', 'rb') as handle:
             uv_info = pickle.load(handle)
