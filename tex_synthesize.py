@@ -33,8 +33,7 @@ import skimage.transform
 import itertools
 from functools import wraps
 import time
-import sklearn
-import sklearn.neighbors
+#from pynndescent import NNDescent
 #import gc
 import math
 import functools
@@ -45,7 +44,17 @@ import shapely.geometry
 import logging
 logger = logging.getLogger(__name__)
 
-
+#ann_library = "pynndescent"
+ann_library = "pynndescent"
+use_pynnd, use_sklearn=False,False
+if ann_library=="pynndescent":
+    import pynndescent as pynnd
+    use_pynnd=True
+elif ann_library=='sklearn':
+    import sklearn
+    import sklearn.neighbors
+    use_sklearn=True
+        
 #def norm(x): return np.sqrt(x.dot(x))
 def norm(x): return np.sqrt((x*x).sum(-1))
 #need to be transposed for correct ultiplcation along axis 1
@@ -91,6 +100,21 @@ def timing(f):
         logger.info(f'func:{f.__name__} took: {te-ts:2.4f} sec')
         return result
     return wrap
+
+@timing
+def init_ann_index(data):
+    if use_pynnd: index = pynnd.NNDescent(data,'manhattan',
+                                          n_neighbors=5,
+                                          n_jobs=-1 #-1: use all processors
+                                          )
+    elif use_sklearn: index = sklearn.neighbors.KDTree(data, metric='manhattan')#'l2'
+    return index
+
+def query_index(index, data, k):
+    if use_pynnd: idx, e = index.query([data], k=k)   
+    elif sklearn: e, idx = index.query([data], k=k)
+    e, idx = e.flatten(), idx.flatten()
+    return e,idx
 
 def copy_img(target, src, pos, mask=None):
     """
@@ -238,10 +262,10 @@ def optimal_patch(ta_patch, example, res_patch, overlap, pos_ex, pos_ta):
     optimpatch, mask = create_optimal_patch(pa, ta_patch, overlap)
     return optimpatch, pa, ta_patch, mask
 
-def find_match(data, db, tol = 0.1, k=5):
+def find_match(data, index, tol = 0.1, k=5):
     #get a horizonal overlap match
-    e, idx = db.query([data], k=k)
-    e, idx = e.flatten(), idx.flatten()
+    #e, idx = index.query([data], k=k)
+    e,idx = query_index(index,data,k)
     #TODO: keep an index with "weights" to make sure
     #      that patches are selected equally oftern OR according
     #      to a predefined distribution
@@ -335,15 +359,13 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #lm = []
     try:
         logger.info("init kdtree1")
-        l = create_patch_data(example, (rp[0], overlap[1]), max_co)
-        l = sklearn.neighbors.KDTree(l, metric='l2')
+        ld = create_patch_data(example, (rp[0], overlap[1]), max_co)
+        l = init_ann_index(ld)
         logger.info("init kdtree2")
-        t = create_patch_data(example, (overlap[0],rp[1]), max_co)
-        t = sklearn.neighbors.KDTree(t, metric='l2')
+        td = create_patch_data(example, (overlap[0],rp[1]), max_co)
+        t = init_ann_index(td)
         logger.info("init kdtree3")
-        lt = sklearn.neighbors.KDTree(np.hstack((l.get_arrays()[0],
-                                                t.get_arrays()[0])),
-                                      metric='l2')
+        lt = init_ann_index(np.hstack((ld,td)))
         #TODO: check memory consumption of KDTrees
         #sklearn.neighbors.KDTree.valid_metrics
         #ov_db = [sklearn.neighbors.KDTree(i, metric='euclidean') for i in (ov_l, ov_t, ov_lt)]
@@ -512,8 +534,8 @@ def create_mask_tree(img, kind="causal5x3"):
     m_patches, max_co, idx2co = gen_patches_from_mask(img,mask)
     #build local neighbourdhood KDTree for pyramid level
     logger.info("generating tree from patches")
-    tree = sklearn.neighbors.KDTree(m_patches, metric='l2')
-    return tree, mask, mask_center, idx2co
+    index = init_ann_index(m_patches)
+    return index, mask, mask_center, idx2co
 
 #generate image with noisy borders which later be cut off
 def local_neighbourhood_enhance(target, ex, mask, tree,
@@ -796,8 +818,8 @@ def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
     data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0)
     logger.info(f"using approx. {data_memoryGB:2f} GB in RAM.")
     data = create_patch_data(example, res_patch, max_co)
-    tree = sklearn.neighbors.KDTree(data, metric='l2')
-    return tree, res_patch, res_patch0, overlap, overlap0, max_co, scaling
+    index = init_ann_index(data)
+    return index, res_patch, res_patch0, overlap, overlap0, max_co, scaling
 
 @timing
 def synthesize_tex_patches(target0, example0,
