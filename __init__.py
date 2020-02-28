@@ -179,8 +179,8 @@ to generate the texture""",
         kwargs = dict()
         
         uv_info = up.prepare_uv_synth_info(*args,**kwargs)
-        self.algorithm_steps=len(uv_info['edge_infos'])
-        self.perc = 0.0
+        self.algorithm_steps=self.synth_tex+len(uv_info['edge_infos']*self.seamless_UVs)
+        context.scene.syntexmexsettings.synth_progress=0.01
         self._killthread = threading.Event()
         synthtex = functools.partial(us.synthesize_textures_on_uvs,
                                         synth_tex=self.synth_tex,
@@ -209,7 +209,7 @@ to generate the texture""",
                 time.sleep(1.0)
                 logger.info(f"working thread at {i}")
                 conn.put(i)
-            logger.info("working threah finished!")        
+            logger.info("working thread finished!")        
         
         self.run_algorithm(context)
         
@@ -217,7 +217,6 @@ to generate the texture""",
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.5, window=context.window)
         wm.modal_handler_add(self)
-        context.scene.syntexmexsettings.synth_progress=0.05
         self._region = context.region
         self._area = context.area
         return {'RUNNING_MODAL'}
@@ -252,8 +251,7 @@ to generate the texture""",
             logger.info(f"received a new msg!!")
         if msg is not None:
             self.write_image(msg)
-            self.perc += 1.0/self.algorithm_steps
-            context.scene.syntexmexsettings.synth_progress=self.perc
+            context.scene.syntexmexsettings.synth_progress += 1.0/self.algorithm_steps
             self._region.tag_redraw()
             self._area.tag_redraw()
         return msg
