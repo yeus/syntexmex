@@ -144,6 +144,11 @@ to generate the texture""",
     synth_tex: bpy.props.BoolProperty(name="synthesize textures")
     seamless_UVs: bpy.props.BoolProperty(name="seamless UV islands")
     libsize: bpy.props.IntProperty(name="patch library size")
+    seed_value: bpy.props.IntProperty(
+            name="Seed Value",
+            description="Seed value for predictable texture generation",
+            default = 0
+            )
 
     _timer = None
 
@@ -179,6 +184,7 @@ to generate the texture""",
         kwargs = dict()
         
         uv_info = up.prepare_uv_synth_info(*args,**kwargs)
+        uv_info['seed_value']=self.seed_value
         self.algorithm_steps=self.synth_tex+len(uv_info['edge_infos']*self.seamless_UVs)
         context.scene.syntexmexsettings.synth_progress=0.01
         self._killthread = threading.Event()
@@ -320,44 +326,70 @@ class syntexmex_panel(bpy.types.Panel):
         op.patch_size = settings.patch_size 
         op.synth_tex=True      
         op.seamless_UVs=True
+        op.seed_value=settings.seed_value
     
     def draw(self, context):
         layout = self.layout
 
         scene = context.scene
+        props = scene.syntexmexsettings
 
         #layout.box()
         col = layout.column()
         col2 = col.column()
-        col2.prop(scene.syntexmexsettings, "synth_progress")
+        col2.prop(props, "synth_progress")
         col2.enabled=False
         col.separator(factor=2.0)
-        if scene.syntexmexsettings.synth_progress < 0.0001: #if algorithm isn running
-            props = scene.syntexmexsettings
+        if props.synth_progress < 0.0001: #if algorithm isn running
             ex_img = props.example_image
             ta_img = props.target_image
-            if (ex_img is not None) and (ta_img is not None):
+            img_init=(ex_img is not None) and (ta_img is not None)
+            if img_init:
                 col2 = col.column()
                 col2.scale_y = 2.0
                 op1 = col2.operator("texture.syntexmex", 
                                     text = "Synthesize UV example based texture")
-                self.copy_to_operator(op1,scene.syntexmexsettings)
+                self.copy_to_operator(op1,props)
                 
                 #col.scale_y = 1.0
                 col.separator(factor=2.0)
                 op2 = col.operator("texture.syntexmex", 
                                     text = "Synthesize textures to UV islands")
-                self.copy_to_operator(op2,scene.syntexmexsettings)
+                self.copy_to_operator(op2,props)
                 op2.synth_tex=True
                 op2.seamless_UVs=False
                 op3 = col.operator("texture.syntexmex",
                                     text = "Make UV seams seamless")
-                self.copy_to_operator(op3,scene.syntexmexsettings)
+                self.copy_to_operator(op3,props)
                 op3.synth_tex=False
                 op3.seamless_UVs=True
-                
-                col.separator(factor=2.0)
-                #taken from here: https://blender.stackexchange.com/questions/72402/how-to-iterate-through-a-propertygroup
+            else:
+                col.alert=True
+                multiline_label(col,"> choose a target & example img.")
+                col.alert=False
+
+            col.separator(factor=2.0)                
+            col.prop(props, "seed_value")
+            col.separator(factor=2.0)
+            #for prop in scene.syntexmexsettings.__annotations__.keys():
+            #    if prop in images:
+            col.label(text="Example Image:")
+            col.template_ID(props, "example_image", 
+                            new="image.new",open="image.open")
+            col.prop(props, "example_scaling")
+            col.prop(props, "libsize")
+            #TODO: make patch_size dependend on target_texture
+            col.prop(props, "patch_size")
+
+
+            col.separator(factor=2.0)
+            col.label(text="Target Image:")
+            col.template_ID(props, "target_image", 
+                            new="image.new",open="image.open")
+            if (ta_img is not None):
+                col.operator("texture.clear_target_texture")
+
+            if img_init:
                 col.label(text="Algorithm Data:")
                 b = col.box()
                 b.scale_y = 0.3
@@ -383,29 +415,8 @@ synth resolution scaling: {scaling:.2f}
 patches (highres): {res_patch0[::-1]} px
 patches (lowres): {res_patch[::-1]} px
 overlap (highres): {overlap0[::-1]}
-overlap (lowres): {overlap[::-1]}""")
-            else:
-                b = col.box()
-                b.scale_y = 0.3
-                multiline_label(b,">>> please choose a target &\nexample image")
-                
-            col.separator(factor=2.0)
-            #for prop in scene.syntexmexsettings.__annotations__.keys():
-            #    if prop in images:
-            col.label(text="Example Image:")
-            col.template_ID(scene.syntexmexsettings, "example_image", 
-                            new="image.new",open="image.open")
+overlap (lowres): {overlap[::-1]}""")                
 
-            col.label(text="Target Image:")
-            col.template_ID(scene.syntexmexsettings, "target_image", 
-                            new="image.new",open="image.open")
-            if (ta_img is not None):
-                col.operator("texture.clear_target_texture")
-
-            col.separator(factor=2.0)
-            col.prop(scene.syntexmexsettings, "patch_size")
-            col.prop(scene.syntexmexsettings, "example_scaling")
-            col.prop(scene.syntexmexsettings, "libsize")
             #col.prop(scene.syntexmexsettings,None)
             #TODO: make it possible to open images
             #
@@ -440,8 +451,15 @@ to generate the texture""",
         step=1
     )
     target_image: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
-    libsize: bpy.props.IntProperty(name="library size",
-                        description="defines the quality of the texture (higher=better, but needs more memory)", min=0, default = 128*128)
+    libsize: bpy.props.IntProperty(name="Library Size",
+            description="defines the quality of the texture (higher=better, but needs more memory)",
+            min=0, default = 128*128
+            )
+    seed_value: bpy.props.IntProperty(
+            name="Seed Value",
+            description="Seed value for predictable texture generation",
+            default = 0
+            )
 
 
 

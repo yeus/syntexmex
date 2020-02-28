@@ -30,6 +30,7 @@ import numpy as np
 import skimage
 import skimage.io
 import skimage.transform
+import threading
 #import gc
 import math
 import functools
@@ -87,10 +88,17 @@ def synthesize_textures_on_uvs(synth_tex=False,
     target = kwargs['target']
     example = kwargs['example']
     patch_ratio = kwargs['patch_ratio']
-    libsize = kwargs['libsize']
+    libsize = kwargs.get('libsize',128*128)
     island_uvs = kwargs['island_uvs']
     edge_infos = kwargs['edge_infos']
+    seed = kwargs.get('seed_value', 0)
+    logger.info(f"seed: {seed}")
     if msg_queue is None: msg_queue=False
+    if stop_event is None: stop_event=threading.Event()
+    
+    #set random seed for algorithm
+    np.random.seed(seed)
+    random.seed(seed)
     
     #TODO: check whether we have "left or right" sided coordinate system
 
