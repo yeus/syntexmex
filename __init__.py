@@ -334,16 +334,18 @@ class syntexmex_panel(bpy.types.Panel):
         scene = context.scene
         props = scene.syntexmexsettings
 
+        ex_img = props.example_image
+        ta_img = props.target_image
+        img_init=(ex_img is not None) and (ta_img is not None)
+
         #layout.box()
         col = layout.column()
         col2 = col.column()
         col2.prop(props, "synth_progress")
         col2.enabled=False
         col.separator(factor=2.0)
+        
         if props.synth_progress < 0.0001: #if algorithm isn running
-            ex_img = props.example_image
-            ta_img = props.target_image
-            img_init=(ex_img is not None) and (ta_img is not None)
             if img_init:
                 col2 = col.column()
                 col2.scale_y = 2.0
@@ -389,25 +391,25 @@ class syntexmex_panel(bpy.types.Panel):
             if (ta_img is not None):
                 col.operator("texture.clear_target_texture")
 
-            if img_init:
-                col.label(text="Algorithm Data:")
-                b = col.box()
-                b.scale_y = 0.3
+        if img_init:
+            col.label(text="Algorithm Data:")
+            b = col.box()
+            b.scale_y = 0.3
 
-                res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-                res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-                scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
-                (res_patch, res_patch0,
-                overlap, overlap0) = us.ts.create_patch_params2(res_ex,
-                                                         scaling,
-                                                         1/6.0, props.patch_size)
-            #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
-            #                        res_patch, ch_num, )
-                mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
-                                          res_patch,
-                                          ch_num = 3, 
-                                          itemsize = 8)
-                multiline_label(b,f"""memory requirements: {mem_reqs:.2f} GB
+            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
+            (res_patch, res_patch0,
+            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
+                                                     scaling,
+                                                     1/6.0, props.patch_size)
+        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
+        #                        res_patch, ch_num, )
+            mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
+                                      res_patch,
+                                      ch_num = ex_img.channels,
+                                      itemsize = 8) #8 comes from the floatingpoint size of 8 bytes in numpy arrays
+            multiline_label(b,f"""memory requirements: {mem_reqs:.4f} GB
 source scaling: {props.example_scaling*100:.0f}%
 source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px
 target resolution: {res_ta[::-1]} px
