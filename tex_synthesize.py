@@ -1057,10 +1057,10 @@ def check_inside_face(polygon, point, tol=0.0):
         return face.contains(shapely.geometry.Point(*point))
 
 @timing
-def make_seamless_edge(e1,e2, target, example0, patch_ratio, 
+def make_seamless_edge(edge1,edge2, target, example0, patch_ratio, 
                        lib_size, debug_level=0,
                        tree_info = None):
-    (e1,verts1),(e2,verts2) = e1,e2
+    (e1,verts1),(e2,verts2) = edge1,edge2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
     tol=2.0
@@ -1215,7 +1215,7 @@ if __name__ == "__main__":
     
         #select two corresponding edges:
         edges = ((verts[0][:2],verts[1][:2]),
-         (verts[0][1:3],verts[1][1:3]))
+                 (verts[0][1:3],verts[1][1:3]))
                     
         target_new = target1
         for e1,e2 in edges[:1]:
