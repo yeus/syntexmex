@@ -36,12 +36,14 @@ import time
 #from pynndescent import NNDescent
 #import gc
 import math
+import os, sys
 import functools
 sign = functools.partial(math.copysign, 1) # either of these
 #import scipy
 import shapely
 import shapely.geometry
 import logging
+#import psutil #TODO: not easy in blender, because of a lacking Python.h
 logger = logging.getLogger(__name__)
 
 #ann_library = "pynndescent"
@@ -115,6 +117,17 @@ def query_index(index, data, k):
     elif sklearn: e, idx = index.query([data], k=k)
     e, idx = e.flatten(), idx.flatten()
     return e,idx
+
+def get_mem_limit(factor=0.5):
+    #stats = psutil.virtual_memory()  # returns a named tuple
+    #avilable_memory = getattr(stats, 'available')/1024**3 # available memory in GB
+    #mem_limit = avilable_memory*factor
+    #tot_m, used_m, free_m = map(int, os.popen('free -t -m').readlines()[-1].split()[1:])
+    if sys.platform=='linux':
+        free_m = int(os.popen('free -t -m').readlines()[1].split()[-1])
+    else:
+        free_m = 2000 #MB
+    return free_m * factor / 1024 #in GB
 
 def copy_img(target, src, pos, mask=None):
     """
@@ -310,8 +323,8 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #calculate maximum possible patch size for given number of patches and
     rp = res_patch
     pnum = max_co.prod()
-    mem_limit = 3.0 #GB
 
+    mem_limit = get_mem_limit()
     #check memory consumption for overlap database:
     #TODO: check memory consumption instructions from sklearn webpage
     #single_overlap_memory_horizontal = \
@@ -324,7 +337,7 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #    * (2 * single_overlap_memory_vertical + 2 * single_overlap_memory_horizontal)
     #augmentation_multiplicator = 2 #(for mirroring, and rotating, the data gets
                                     #) multiplied
-    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0,
+    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=mem_limit,
                               disable_safety_check=True)
     logger.info(f"using approx. {3*data_memoryGB:2f} GB in RAM.")
 
@@ -808,6 +821,7 @@ def check_memory_requirements(example, res_patch, maxmem = 1.0,
             np.array(example.shape[:2]),res_patch,
             ch_num = example.shape[2], 
             itemsize = example.itemsize)
+    logger.info(f"using {data_memoryGB:.4f} of {maxmem} GB for synthesis")
     if not disable_safety_check:
         if data_memoryGB > maxmem:
             raise MemoryError("the algorithm would exceed the "
@@ -824,7 +838,9 @@ def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
                                                                    patch_ratio)
     max_co = np.array(example.shape[:2]) - res_patch
 
-    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0,disable_safety_check=True)
+    data_memoryGB = check_memory_requirements(example,res_patch, 
+                                              maxmem=get_mem_limit(),
+                                              disable_safety_check=True)
     logger.info(f"using approx. {data_memoryGB:2f} GB in RAM.")
     data = create_patch_data(example, res_patch, max_co)
     index = init_ann_index(data)
