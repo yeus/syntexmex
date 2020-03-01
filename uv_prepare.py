@@ -371,7 +371,7 @@ def get_uv_levelset(uvs):
 def get_uvs(bm):
     uvs = {}#defaultdict(list)
     for face in bm.faces:#[:1]:
-        uvs[face.index] = get_face_uvs(face)
+        uvs[face.index] = get_face_uvs(face,bm)
     return uvs
 
 def get_face_uvs(face, bm):
@@ -408,15 +408,22 @@ def generate_edge_loop_uvs(bm_edges, res, bm):
     """generates an edge_info structure that can be used
     as input to make seamless edges"""
     edge_uvs = [get_edge_uvs(e, bm) for e in bm_edges] #get uvs
+    #[len(e) for e in edge_uvs]
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
+    #switching x and y coordinates to adapt to numpy column-row convention
     edge_uvs = np.array(edge_uvs)[...,::-1]*res + (-0.5,-0.5) #switch xy to numpy yx convention and transform into pixel space
     #import ipdb; ipdb.set_trace() # BREAKPOINT
-    face_uvs = [(get_face_uvs(e.link_faces[0], bm),
-                 get_face_uvs(e.link_faces[1], bm)) for e in bm_edges]
-    import ipdb; ipdb.set_trace() # BREAKPOINT
-    face_uvs = np.array(face_uvs)[...,::-1]*res + (-0.5,-0.5)
+    face_uvs = np.array([(e.link_faces[0].index,
+                 e.link_faces[1].index) for e in bm_edges])
+    #import ipdb; ipdb.set_trace()
+    #for face its a little more complicated switching the coordinates
+    #as there can have different number of vertices and thus
+    # can not be put into a homogenous numpy array
+    #face_uvs = [[f[...,::-1]*res + (-0.5,-0.5) for f in fs] for fs in face_uvs]
+    #face_uvs = [np.array(face_uvs)[...,::-1]*res + (-0.5,-0.5)]
     #import ipdb; ipdb.set_trace() # BREAKPOINT
-    edge_infos1 = tuple(zip(edge_uvs[:,0,:,:],face_uvs[:,0,:,:]))
-    edge_infos2 = tuple(zip(edge_uvs[:,1,:,:],face_uvs[:,1,:,:]))
+    edge_infos1 = tuple(zip(edge_uvs[:,0,:,:],face_uvs[:,0]))
+    edge_infos2 = tuple(zip(edge_uvs[:,1,:,:],face_uvs[:,1]))
     return edge_infos1,edge_infos2
 
 def prepare_uv_synth_info(example, 
@@ -440,26 +447,6 @@ def prepare_uv_synth_info(example,
         
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
-    #TODO: make sure all islands are taken into account
-    logger.info("synthesize uv islands")
-    island_uvs = [get_face_uvs(bm.faces[fidx], bm) for fidx in islands[0]]
-            
-       
-    """
-    for uvs in [get_face_uvs(bm.faces[fidx]) for fidx in islands[0]]:
-    #for island in islands: #render texture for each island
-    #for uvs in list(get_uvs(bm).values())[:]:
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        verts = uvs[...,::-1] * res[:2] #transform to pixel space
-        mask = 
-        #levelset, (miny, minx, maxy, maxx) = ts.get_poly_levelset(verts)
-        #target[miny:maxy,minx:maxx,0]=np.ones(w,h)
-        mask = levelset>0.0
-        target[miny:maxy,minx:maxx,:3][mask]=np.random.rand(3)*0.5+0.5
-        # import ipdb; ipdb.set_trace() # BREAKPOINT
-        #verts = np.flip(verts,1)
-        target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
-
     #build a list of edge pairs
     #iterate through edges
     #https://b3d.interplanety.org/en/learning-loops/
@@ -468,18 +455,16 @@ def prepare_uv_synth_info(example,
     unconnected_edges = [edge for edge in continuous_edges if not 
                          loops_connected(edge, bm)] 
 
-
-    logger.info(f"using edge: {unconnected_edges[0]}")
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     edge_infos1, edge_infos2 = generate_edge_loop_uvs(unconnected_edges, 
                                                       res, bm)
-        
     uv_info = {
             "target":target,
             "example":example,
             "patch_ratio":patch_ratio,
             "libsize":libsize,
-            "island_uvs":island_uvs,
+            "face_uvs":get_uvs(bm),
+            "islands":islands,
             "edge_infos":list(zip(edge_infos1, edge_infos2))
             }
     

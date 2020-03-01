@@ -89,7 +89,8 @@ def synthesize_textures_on_uvs(synth_tex=False,
     example = kwargs['example']
     patch_ratio = kwargs['patch_ratio']
     libsize = kwargs.get('libsize',128*128)
-    island_uvs = kwargs['island_uvs']
+    face_uvs = kwargs['face_uvs']
+    islands = kwargs['islands']
     edge_infos = kwargs['edge_infos']
     seed = kwargs.get('seed_value', 0)
     logger.info(f"seed: {seed}")
@@ -106,6 +107,8 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #TODO: make sure all islands are taken into account
         logger.info("synthesize uv islands")
         res = target.shape[:2]
+        island = islands[0]
+        island_uvs = [face_uvs[i] for i in island]
         island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
         #get a boundingbox for the entire island
         ymin,xmin = island_uvs_px.min(axis = (0,1)).astype(int)-(1,1)
@@ -153,7 +156,9 @@ def synthesize_textures_on_uvs(synth_tex=False,
         for i,(e1,e2) in enumerate(edge_infos):
             logger.info(f"making edge seamless: #{i}")
             #TODO: add pre-calculated island mask to better find "valid" uv pixels
-            target, tree_info = ts.make_seamless_edge(e1, e2, target, example,
+            edge1 = e1[0],face_uvs[e1[1]][:,::-1]*target.shape[:2]
+            edge2 = e2[0],face_uvs[e2[1]][:,::-1]*target.shape[:2]
+            target, tree_info = ts.make_seamless_edge(edge1, edge2, target, example,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info,
                                            debug_level=0)
@@ -170,6 +175,13 @@ def synthesize_textures_on_uvs(synth_tex=False,
 def check_face_orientation(face):
     edge_vecs = np.roll(face,1,0)-face
     return np.cross(np.roll(edge_vecs,1,0),edge_vecs)
+
+def paint_uv_dots(faces, target):
+    for f in faces.values():
+        for v in f[:,::-1]*target.shape[:2]:
+            #v=v[::-1]
+            target[skimage.draw.circle(v[0],v[1],2)]=(1,0,0,1)
+            
     
 if __name__=="__main__":
     logging.basicConfig(level=logging.INFO)
@@ -182,6 +194,10 @@ if __name__=="__main__":
             uv_info = pickle.load(handle)
             
     #skimage.io.imshow_collection([uv_info["target"],uv_info["example"]])
+    
+    target=uv_info['target']
+    paint_uv_dots(uv_info['face_uvs'],target)
+    
     
     target = synthesize_textures_on_uvs(synth_tex=True,
                                         seamless_UVs=True,
