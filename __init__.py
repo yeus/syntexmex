@@ -339,7 +339,7 @@ class syntexmex_panel(bpy.types.Panel):
         ta_img = props.target_image
         img_init=(ex_img is not None) and (ta_img is not None)
 
-        maxmem=3.0
+        maxmem=us.ts.get_mem_limit()
 
         #calculate algorithm properties and display some help how to set
         #it up correctly
@@ -360,7 +360,7 @@ class syntexmex_panel(bpy.types.Panel):
                   ch_num = ex_img.channels,
                   itemsize = 8) #itemsize= 8 comes from the floatingpoint size of 8 bytes in numpy arrays
             if mem_reqs > maxmem:
-                showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f} GB\nmore than {maxmem} GB."
+                showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f} GB\nmore than the available {maxmem:.2f} GB."
                 canrun=False
                 col2.alert=True
             elif np.any(np.array(res_patch)<2):
@@ -443,7 +443,7 @@ class syntexmex_panel(bpy.types.Panel):
             b = col.box()
             b.scale_y = 0.3
 
-            multiline_label(b,f"""memory requirements: {mem_reqs:.4f} GB
+            multiline_label(b,f"""memory requirements: {mem_reqs:.2f}/{maxmem:.2f} GB
 source scaling: {props.example_scaling*100:.0f}%
 source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px
 target resolution: {res_ta[::-1]} px
