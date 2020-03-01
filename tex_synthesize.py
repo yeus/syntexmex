@@ -324,7 +324,9 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
     #    * (2 * single_overlap_memory_vertical + 2 * single_overlap_memory_horizontal)
     #augmentation_multiplicator = 2 #(for mirroring, and rotating, the data gets
                                     #) multiplied
-    check_memory_requirements(example,res_patch, maxmem=1.0)
+    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0,
+                              disable_safety_check=True)
+    logger.info(f"using approx. {3*data_memoryGB:2f} GB in RAM.")
 
     #TODO: build my own search algorithm which doesn't consume as much memory
     # and can find things in an image much quicker
@@ -792,20 +794,27 @@ def fill_area_with_texture(target, example0,
 
     return target, bmask, fill1, fill2, pgimg
 
-def check_memory_requirements2(res_ex, res_patch, ch_num, itemsize, maxmem = 1.0):
+def calculate_memory_consumption(res_ex, res_patch, 
+                                 ch_num, itemsize):
     patch_num=np.product(np.array(res_ex) - res_patch)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     data_memoryGB = patch_num*ch_num*itemsize*np.product(res_patch)*GB
     #print(f"using approx. {data_memoryGB:2f} GB in RAM.")
-    if data_memoryGB > maxmem:
-        raise MemoryError("the algorithm would exceed the "
-                          f"maximum amount of Memory: {data_memoryGB:2f} GB,; max: {maxmem}")
     return data_memoryGB
 
-def check_memory_requirements(example, res_patch, maxmem = 1.0):
-    return check_memory_requirements2(np.array(example.shape[:2]),res_patch,
-                                      ch_num = example.shape[2], 
-                                      itemsize = example.itemsize)
+def check_memory_requirements(example, res_patch, maxmem = 1.0,
+                              disable_safety_check=False):
+    data_memoryGB = calculate_memory_consumption(
+            np.array(example.shape[:2]),res_patch,
+            ch_num = example.shape[2], 
+            itemsize = example.itemsize)
+    if not disable_safety_check:
+        if data_memoryGB > maxmem:
+            raise MemoryError("the algorithm would exceed the "
+                          "maximum amount of Memory: " 
+                          f"{data_memoryGB:2f} GB,; max: {maxmem}")
+
+    return data_memoryGB
 
 @timing
 def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
@@ -815,7 +824,7 @@ def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
                                                                    patch_ratio)
     max_co = np.array(example.shape[:2]) - res_patch
 
-    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0)
+    data_memoryGB = check_memory_requirements(example,res_patch, maxmem=1.0,disable_safety_check=True)
     logger.info(f"using approx. {data_memoryGB:2f} GB in RAM.")
     data = create_patch_data(example, res_patch, max_co)
     index = init_ann_index(data)
