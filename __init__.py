@@ -330,6 +330,7 @@ class syntexmex_panel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
+        col = layout.column()
 
         scene = context.scene
         props = scene.syntexmexsettings
@@ -338,38 +339,78 @@ class syntexmex_panel(bpy.types.Panel):
         ta_img = props.target_image
         img_init=(ex_img is not None) and (ta_img is not None)
 
-        #layout.box()
-        col = layout.column()
-        col2 = col.column()
-        col2.prop(props, "synth_progress")
-        col2.enabled=False
-        col.separator(factor=2.0)
-        
-        if props.synth_progress < 0.0001: #if algorithm isn running
-            if img_init:
-                col2 = col.column()
-                col2.scale_y = 2.0
-                op1 = col2.operator("texture.syntexmex", 
-                                    text = "Synthesize UV example based texture")
-                self.copy_to_operator(op1,props)
-                
-                #col.scale_y = 1.0
-                col.separator(factor=2.0)
-                op2 = col.operator("texture.syntexmex", 
-                                    text = "Synthesize textures to UV islands")
-                self.copy_to_operator(op2,props)
-                op2.synth_tex=True
-                op2.seamless_UVs=False
-                op3 = col.operator("texture.syntexmex",
-                                    text = "Make UV seams seamless")
-                self.copy_to_operator(op3,props)
-                op3.synth_tex=False
-                op3.seamless_UVs=True
-            else:
-                col.alert=True
-                multiline_label(col,"> choose a target & example img.")
-                col.alert=False
+        maxmem=1.5
 
+        #calculate algorithm properties and display some help how to set
+        #it up correctly
+        col2 = col.column()
+        if img_init:
+            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
+            (res_patch, res_patch0,
+            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
+                                                     scaling,
+                                                     1/6.0, props.patch_size)
+        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
+        #                        res_patch, ch_num, )
+            mem_reqs = us.ts.calculate_memory_consumption(
+                  res_ex*scaling,
+                  res_patch,
+                  ch_num = ex_img.channels,
+                  itemsize = 8) #itemsize= 8 comes from the floatingpoint size of 8 bytes in numpy arrays
+            if mem_reqs > maxmem:
+                showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f}GB\nmore than{maxmem}GB."
+                canrun=False
+                col2.alert=True
+            elif np.any(np.array(res_patch)<2):
+                showtext=f"algorithm needs patch\nsizes >2 to run!"
+                col2.alert=True
+                canrun=False
+            elif np.any(np.array(overlap)<1):
+                showtext=f"algorithm needs overlap\nsizes > 1"
+                col2.alert=True
+                canrun=False
+            else:
+                showtext="algorithm is ready..."
+                canrun=True
+        elif not img_init:
+            showtext="choose a target & example img."
+            col2.alert=True
+        elif props.synth_progress > 0.0001:
+            showtext="press 'ESC' to stop texture synthesis"
+        
+        #display helptext
+        col2.scale_y = 0.7
+        multiline_label(col2,"> "+showtext)
+        
+        col.separator(factor=2.0)
+        if props.synth_progress < 0.0001: #if algorithm isn running
+            ######  algorithm start buttons for different run modes
+            col3 = col.column()
+            if img_init and canrun: col3.enabled=True
+            else: col3.enabled=False
+            col2 = col3.column()
+            col2.scale_y = 2.0
+            op1 = col2.operator("texture.syntexmex", 
+                                text = "Synthesize UV example based texture")
+            self.copy_to_operator(op1,props)
+            
+            #col.scale_y = 1.0
+            col3.separator(factor=2.0)
+            op2 = col3.operator("texture.syntexmex", 
+                                text = "Synthesize textures to UV islands")
+            self.copy_to_operator(op2,props)
+            op2.synth_tex=True
+            op2.seamless_UVs=False
+            op3 = col3.operator("texture.syntexmex",
+                                text = "Make UV seams seamless")
+            self.copy_to_operator(op3,props)
+            op3.synth_tex=False
+            op3.seamless_UVs=True
+
+
+            #####algorithm properties
             col.separator(factor=2.0)                
             col.prop(props, "seed_value")
             col.separator(factor=2.0)
@@ -392,23 +433,16 @@ class syntexmex_panel(bpy.types.Panel):
                 col.operator("texture.clear_target_texture")
 
         if img_init:
+            col.separator(factor=4.0)
+            #layout.box()
+            col2 = col.column()
+            col2.prop(props, "synth_progress")
+            col2.enabled=False
+            
             col.label(text="Algorithm Data:")
             b = col.box()
             b.scale_y = 0.3
 
-            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
-            (res_patch, res_patch0,
-            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
-                                                     scaling,
-                                                     1/6.0, props.patch_size)
-        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
-        #                        res_patch, ch_num, )
-            mem_reqs = us.ts.check_memory_requirements2(res_ex*scaling,
-                                      res_patch,
-                                      ch_num = ex_img.channels,
-                                      itemsize = 8) #8 comes from the floatingpoint size of 8 bytes in numpy arrays
             multiline_label(b,f"""memory requirements: {mem_reqs:.4f} GB
 source scaling: {props.example_scaling*100:.0f}%
 source resolution: [{res_ex[1]:.0f} {res_ex[0]:.0f}] px
@@ -435,7 +469,7 @@ class SyntexmexSettings(bpy.types.PropertyGroup):
     patch_size: bpy.props.FloatProperty(
         name="Patch Size Ratio",
         description="Set width of patches as a ratio of shortest edge of an image",
-        min=0.0,
+        min=0.0001,
         max=0.5,
         default=0.1,
         precision=3,
@@ -446,7 +480,7 @@ class SyntexmexSettings(bpy.types.PropertyGroup):
         name="Example Scaling",
         description="""Scale Example to a certain size which will be used
 to generate the texture""",
-        min=0.0,
+        min=0.0001,
         max=1.0,
         default=1.0,
         precision=3,
@@ -455,7 +489,8 @@ to generate the texture""",
     target_image: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
     libsize: bpy.props.IntProperty(name="Library Size",
             description="defines the quality of the texture (higher=better, but needs more memory)",
-            min=0, default = 128*128
+            min=10*10, default = 128*128,
+            step=10#TODO: currently not implemented in blender
             )
     seed_value: bpy.props.IntProperty(
             name="Seed Value",
