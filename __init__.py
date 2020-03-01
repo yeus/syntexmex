@@ -83,7 +83,7 @@ import uv_prepare as up
 importlib.reload(up)
 import uv_synthesize as us
 importlib.reload(us)
-
+importlib.reload(us.ts)
 
 __author__ = "yeus <Thomas.Meschede@web.de>"
 __status__ = "test"

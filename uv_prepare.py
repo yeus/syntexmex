@@ -381,17 +381,27 @@ def get_face_uvs(face, bm):
 
 def get_edge_uvs(edge, bm):
     uv_layer = bm.loops.layers.uv['UVMap']
-    l1,l2 = edge.link_loops #the two "opposite loops"
-    l1n, l2n = [l.link_loop_next for l in edge.link_loops] #for the next uv
-    uv_edge1 = np.array([l[uv_layer].uv for l in [l1,l1n]])
-    uv_edge2 = np.array([l[uv_layer].uv for l in [l2,l2n]])
-    return uv_edge1, uv_edge2
+    #if len(edge.link_loops) == 2:
+    l = edge.link_loops #the two "opposite loops"
+    ln = [l.link_loop_next for l in edge.link_loops] #for the next uv
+    uv_edges = np.array([[l[uv_layer].uv for l in lln] for lln in zip(l,ln)])
+    #uv_edge2 = np.array([l[uv_layer].uv for l in [l2,l2n]])
+    return uv_edges
+
 
 def loops_connected(edge, bm):
     """check if the uv coordinates of an edge are the
     same for both connected faces"""
-    uv_edge1, uv_edge2 = get_edge_uvs(edge, bm)
-    if np.all(uv_edge1==uv_edge2[::-1]): return True
+    uv_edges = get_edge_uvs(edge, bm)
+    if len(uv_edges)<2:
+        return False
+    else:
+        if np.all(uv_edges[0]==uv_edges[1][::-1]): return True
+        else: return False
+        
+def is_border_edge(edge, bm):
+    if len(edge.link_loops)<2:
+        return True
     else: return False
 
 def generate_edge_loop_uvs(bm_edges, res, bm):
@@ -399,8 +409,10 @@ def generate_edge_loop_uvs(bm_edges, res, bm):
     as input to make seamless edges"""
     edge_uvs = [get_edge_uvs(e, bm) for e in bm_edges] #get uvs
     edge_uvs = np.array(edge_uvs)[...,::-1]*res + (-0.5,-0.5) #switch xy to numpy yx convention and transform into pixel space
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
     face_uvs = [(get_face_uvs(e.link_faces[0], bm),
-                    get_face_uvs(e.link_faces[1], bm)) for e in bm_edges]
+                 get_face_uvs(e.link_faces[1], bm)) for e in bm_edges]
+    import ipdb; ipdb.set_trace() # BREAKPOINT
     face_uvs = np.array(face_uvs)[...,::-1]*res + (-0.5,-0.5)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     edge_infos1 = tuple(zip(edge_uvs[:,0,:,:],face_uvs[:,0,:,:]))
@@ -452,8 +464,9 @@ def prepare_uv_synth_info(example,
     #iterate through edges
     #https://b3d.interplanety.org/en/learning-loops/
     bm.edges.index_update()
-    unconnected_edges = [edge for edge in bm.edges if not 
-                         loops_connected(edge, bm)]    
+    continuous_edges = [edge for edge in bm.edges if not is_border_edge(edge,bm)]
+    unconnected_edges = [edge for edge in continuous_edges if not 
+                         loops_connected(edge, bm)] 
 
 
     logger.info(f"using edge: {unconnected_edges[0]}")
