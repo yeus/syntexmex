@@ -107,49 +107,29 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #TODO: make sure all islands are taken into account
         logger.info("synthesize uv islands")
         res = target.shape[:2]
-        island = islands[0]
-        island_uvs = [face_uvs[i] for i in island]
-        island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
-        #get a boundingbox for the entire island
-        isl_mins = np.array([isl_px.min(axis=0) for isl_px in island_uvs_px])
-        ymin,xmin = isl_mins.min(axis=0).astype(int)-(1,1)
-        isl_mins = np.array([isl_px.max(axis=0) for isl_px in island_uvs_px])
-        ymax,xmax = isl_mins.max(axis=0).astype(int)+(1,1)
+        for island in islands:
+            island_uvs = [face_uvs[i] for i in island]
+            island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
+            #get a boundingbox for the entire island
+            isl_mins = np.array([isl_px.min(axis=0) for isl_px in island_uvs_px])
+            ymin,xmin = isl_mins.min(axis=0).astype(int)-(1,1)
+            isl_mins = np.array([isl_px.max(axis=0) for isl_px in island_uvs_px])
+            ymax,xmax = isl_mins.max(axis=0).astype(int)+(1,1)
+    
+            #add .5 so that uv coordinates refer to the middle of a pixel
+            # this has to be done after the "mins" where found
+            island_uvs_px = [isl + (-0.5,-0.5) for isl in island_uvs_px]
+            
+            island_mask = np.zeros(target.shape[:2])
+            for uvs in island_uvs_px:
+                island_mask[skimage.draw.polygon(*uvs.T)]=1.0
+            island_mask = island_mask[ymin:ymax,xmin:xmax]>0
 
-        #add .5 so that uv coordinates refer to the middle of a pixel
-        # this has to be done after the "mins" where found
-        island_uvs_px = [isl + (-0.5,-0.5) for isl in island_uvs_px]
-        
-        #import ipdb; ipdb.set_trace() # BREAKPOINT
-        #target[ymin:ymax,xmin:xmax,0]=0.5
-        island_mask = np.zeros(target.shape[:2])
-        for uvs in island_uvs_px:
-            island_mask[skimage.draw.polygon(*uvs.T)]=1.0
-        island_mask = island_mask[ymin:ymax,xmin:xmax]>0
-        #target = 
-        ts.fill_area_with_texture(target, example,
-                                  patch_ratio=patch_ratio, libsize = libsize,
-                                  bounding_box=(ymin,xmin,ymax,xmax),
-                                  mask = island_mask)
-        if msg_queue: msg_queue.put(target)
-        #fill mask
-        
-        #target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)
-        
-        """
-        for uvs in [get_face_uvs(bm.faces[fidx]) for fidx in islands[0]]:
-        #for island in islands: #render texture for each island
-        #for uvs in list(get_uvs(bm).values())[:]:
-            #import ipdb; ipdb.set_trace() # BREAKPOINT
-            verts = uvs[...,::-1] * res[:2] #transform to pixel space
-            mask = 
-            #levelset, (miny, minx, maxy, maxx) = ts.get_poly_levelset(verts)
-            #target[miny:maxy,minx:maxx,0]=np.ones(w,h)
-            mask = levelset>0.0
-            target[miny:maxy,minx:maxx,:3][mask]=np.random.rand(3)*0.5+0.5
-            # import ipdb; ipdb.set_trace() # BREAKPOINT
-            #verts = np.flip(verts,1)
-            target1,f1,f2,cospxs, bmask = ts.fill_area_with_texture(target, example, verts)"""
+            ts.fill_area_with_texture(target, example,
+                                      patch_ratio=patch_ratio, libsize = libsize,
+                                      bounding_box=(ymin,xmin,ymax,xmax),
+                                      mask = island_mask)
+            if msg_queue: msg_queue.put(target)
 
     if stop_event.is_set(): 
         logger.info("stopping_thread")
@@ -200,13 +180,14 @@ if __name__=="__main__":
     #skimage.io.imshow_collection([uv_info["target"],uv_info["example"]])
     
     target=uv_info['target']
-    paint_uv_dots(uv_info['face_uvs'],target)
+    #paint_uv_dots(uv_info['face_uvs'],target)
     
     
     target = synthesize_textures_on_uvs(synth_tex=True,
-                                        seamless_UVs=True,
+                                        seamless_UVs=False,
                                         edge_iterations=0,
                                         **uv_info)
+    logger.info("finished test!")
     skimage.io.imshow_collection([target])
     #uv_info['edge_infos'][0]
 
