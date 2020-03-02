@@ -111,10 +111,14 @@ def synthesize_textures_on_uvs(synth_tex=False,
         island_uvs = [face_uvs[i] for i in island]
         island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
         #get a boundingbox for the entire island
-        ymin,xmin = island_uvs_px.min(axis = (0,1)).astype(int)-(1,1)
-        ymax,xmax = island_uvs_px.max(axis = (0,1)).astype(int)+(1,1)
+        isl_mins = np.array([isl_px.min(axis=0) for isl_px in island_uvs_px])
+        ymin,xmin = isl_mins.min(axis=0).astype(int)-(1,1)
+        isl_mins = np.array([isl_px.max(axis=0) for isl_px in island_uvs_px])
+        ymax,xmax = isl_mins.max(axis=0).astype(int)+(1,1)
+
         #add .5 so that uv coordinates refer to the middle of a pixel
-        island_uvs_px = island_uvs_px + (-0.5,-0.5) 
+        # this has to be done after the "mins" where found
+        island_uvs_px = [isl + (-0.5,-0.5) for isl in island_uvs_px]
         
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         #target[ymin:ymax,xmin:xmax,0]=0.5
