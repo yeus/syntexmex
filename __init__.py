@@ -229,7 +229,7 @@ to generate the texture""",
     
     def modal(self, context, event):
         #TODO: https://stackoverflow.com/questions/21409683/passing-numpy-arrays-through-multiprocessing-queue for passing images from the other (sub) process
-        if event.type in {'RIGHTMOUSE', 'ESC'}:
+        if event.type in {'ESC'}:#{'RIGHTMOUSE', 'ESC'}:
             self.cancel(context)
             logger.info("thread was cancelled!")
             return {'CANCELLED'}
@@ -359,8 +359,10 @@ class syntexmex_panel(bpy.types.Panel):
                   res_patch,
                   ch_num = ex_img.channels,
                   itemsize = 8) #itemsize= 8 comes from the floatingpoint size of 8 bytes in numpy arrays
-            if mem_reqs > maxmem:
-                showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f} GB\nmore than the available {maxmem:.2f} GB."
+            if props.synth_progress > 0.0001:
+                showtext=f"synthesize texture...\npress 'ESC' to cancel."
+            elif mem_reqs > maxmem:
+                showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f} GB\nmore than the available {maxmem:.2f} GB.\nMaybe close down other \nprograms to free up memory?"
                 canrun=False
                 col2.alert=True
             elif np.any(np.array(res_patch)<2):

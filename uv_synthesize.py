@@ -112,10 +112,12 @@ def synthesize_textures_on_uvs(synth_tex=False,
             island_uvs_px = np.array([uv[...,::-1] * res[:2] for uv in island_uvs])
             #get a boundingbox for the entire island
             isl_mins = np.array([isl_px.min(axis=0) for isl_px in island_uvs_px])
-            ymin,xmin = isl_mins.min(axis=0).astype(int)-(1,1)
+            ymin,xmin = isl_mins.min(axis=0).astype(int)#-(1,1)
+            ymin,xmin = max(ymin,0),max(xmin,0)
             isl_mins = np.array([isl_px.max(axis=0) for isl_px in island_uvs_px])
-            ymax,xmax = isl_mins.max(axis=0).astype(int)+(1,1)
-    
+            ymax,xmax = isl_mins.max(axis=0).astype(int)#+(1,1)
+            ymax,xmax = min(ymax,res[0]),min(xmax,res[1])
+        
             #add .5 so that uv coordinates refer to the middle of a pixel
             # this has to be done after the "mins" where found
             island_uvs_px = [isl + (-0.5,-0.5) for isl in island_uvs_px]
@@ -184,7 +186,7 @@ if __name__=="__main__":
     
     
     target = synthesize_textures_on_uvs(synth_tex=True,
-                                        seamless_UVs=False,
+                                        seamless_UVs=True,
                                         edge_iterations=0,
                                         **uv_info)
     logger.info("finished test!")
