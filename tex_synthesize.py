@@ -991,8 +991,11 @@ def transfer_patch_pixelwise(target, search_area0,
     y1,x1 = search_area0.shape[:2]
     x = np.arange(0,x1,1.0/sub_pixels)
     y = np.arange(0,y1,1.0/sub_pixels)
+    #get coordinate grid
     sub_pix = np.stack(np.meshgrid(y,x),axis = 2).reshape(-1,2)
-    coords_matrix = (yp,xp) + sub_pix - e1[0] #vector from uv edge to sub_pixel
+    #vector from uv edge to sub_pixel in patch with corner yp,xp
+    coords_matrix = (yp,xp) + sub_pix - e1[0] 
+
     
     proj = proj = coords_matrix.dot(v1)/(v1.dot(v1)) #orthogonal projection of pixels on edge
     orth_d = np.outer(proj,v1)-coords_matrix #orthogonal distance vector from edge
@@ -1012,6 +1015,11 @@ def transfer_patch_pixelwise(target, search_area0,
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     #coords = np.array((yp,xp)) + sub_idx - e1[0]
 
+    #TODO: either cythonize or vectorize using numpy
+    #TODO: put in some checks whether px2coords are "valid"
+    # we can do this by checking all coordinates for bounds
+    # create a mask from this and apply it to all the
+    # vectors that are being zipped in the below loop
     if fromtarget:
         for sp, isleft, px2_coords, d_len in zip(sub_pix, isleft, px2_cos, d_len):
             #import ipdb; ipdb.set_trace() # BREAKPOINT
@@ -1060,9 +1068,19 @@ def check_inside_face(polygon, point, tol=0.0):
 def make_seamless_edge(edge1,edge2, target, example0, patch_ratio, 
                        lib_size, debug_level=0,
                        tree_info = None):
+    #TODO: make sure that the "longer" edge is defined as
+    #"e1" --> this is so that we don't have huge undefined patch_sizes
+    #in the final result. Additionally, this make sure that we always have a
+    #"high-resolution"-edge where the patchesa re used.
+    
+    
     (e1,verts1),(e2,verts2) = edge1,edge2
     v1 = e1[1]-e1[0]
     v2 = e2[1]-e2[0]
+    if norm(v1)<norm(v2): #if edge1 is shorter than edge2 (in pixels)
+        (e1,verts1),(e2,verts2) = edge2,edge1
+        v1 = e1[1]-e1[0]
+        v2 = e2[1]-e2[0]
     tol=2.0
 
     #edge_perpendivular vectors pointing to the "left" of an edge
@@ -1087,6 +1105,8 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
     logger.info(f"patch_size = {res_patch0}, overlap = {overlap0}, libsize = {lib_size}")
 #    target_new = target.copy()
     #import ipdb; ipdb.set_trace() # BREAKPOINT
+    #pad the target to make sure we can do all operations at its
+    #borders
     target_new = np.pad(target.copy(),((res_patch0[0],res_patch0[0]),
                                     (res_patch0[1],res_patch0[1]),(0,0)), mode='edge')
     #transform coordinates to padded target
