@@ -105,18 +105,23 @@ def timing(f):
 
 @timing
 def init_ann_index(data):
-    if use_pynnd: index = pynnd.NNDescent(data,'manhattan',
-                                          n_neighbors=5,
-                                          n_jobs=-1 #-1: use all processors
-                                          )
-    elif use_sklearn: index = sklearn.neighbors.KDTree(data, metric='manhattan')#'l2'
+    if use_pynnd: 
+        index = pynnd.NNDescent(data,'manhattan',
+                                n_neighbors=5,
+                                n_jobs=-1 #-1: use all processors
+                                )
+    elif use_sklearn: 
+        index = sklearn.neighbors.KDTree(data, metric='manhattan')#'l2'
     return index
 
 def query_index(index, data, k):
-    if use_pynnd: idx, e = index.query([data], k=k)   
-    elif sklearn: e, idx = index.query([data], k=k)
-    e, idx = e.flatten(), idx.flatten()
-    return e,idx
+    if use_pynnd: 
+        idx, e = index.query([data], k=k)   
+        return e,idx[0]
+    elif sklearn: 
+        e, idx = index.query([data], k=k)
+        e, idx = e.flatten(), idx.flatten()
+        return e,idx
 
 def get_mem_limit(factor=0.5):
     #stats = psutil.virtual_memory()  # returns a named tuple
@@ -277,8 +282,8 @@ def optimal_patch(ta_patch, example, res_patch, overlap, pos_ex, pos_ta):
 
 def find_match(data, index, tol = 0.1, k=5):
     #get a horizonal overlap match
-    #e, idx = index.query([data], k=k)
     e,idx = query_index(index,data,k)
+    #e,idx = query_index(index,data,k)
     #TODO: keep an index with "weights" to make sure
     #      that patches are selected equally oftern OR according
     #      to a predefined distribution
@@ -390,11 +395,6 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         logger.info("example texture too large, algorithm needs "
            "too much RAM: {totalmemoryGB:.2f}GB")
         raise
-
-    #TODO: delete ov_l, ov_t, ov_lt to free up memory (maybe just put them
-    # into a function so that they get automatically garbage collected, function could
-    # initialize KDTrees for example)
-    # or put the data of the KDtree on them so that they take ob the same memory space
 
     pg = np.full(shape=(*res_grid,2), fill_value=-1, dtype=int)
     pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
@@ -700,36 +700,6 @@ def create_patch_params(example0, scaling,
     return create_patch_params2(example0.shape[:2], scaling,
                          overlap_ratio, patch_ratio)
 
-def synth_patch_tex(target, example0, k=5, patch_ratio=0.1, libsize = 128*128):
-    #TODO: merge this function with the "search" and the "optimal patch"
-    # functionality to make it similar to the "synthesize_tex_patches" function
-    example, scaling = normalize_picture(example0, libsize)
-    res_target = target.shape[:2]
-    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling,
-                                                        patch_ratio=patch_ratio)
-    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
-
-    logger.info(f"patch_size: {res_patch2}; initial scaling: {scaling}, ")
-
-    #time.sleep(10.0)
-
-    pg = synthesize_grid(example, res_patch, res_grid, overlap, tol=.1, k=k)
-    pgimage = pg/pg.max((0,1))
-    pgimage = np.dstack((pgimage,np.zeros(pgimage.shape[:2])))
-
-    #transform pg coordinates into original source texture
-    pg2 = np.round(pg / scaling).astype(int)
-
-    target = transform_patch_grid_to_tex(None, res_patch2, pg2, example0,
-                                         overlap2,
-                                         use_quilting=True)
-
-    target2 = transform_patch_grid_to_tex(None, res_patch, pg, example,
-                                          overlap,
-                                          use_quilting=True)
-
-    return target[:res_target[0],:res_target[1]], target2, pgimage
-
 #create test-target to fill with mask:
 def generate_test_target_with_fill_mask(example):
     target = example.copy()
@@ -747,7 +717,7 @@ def generate_test_target_with_fill_mask(example):
         target[rr,cc]=(1,0,0,1)
         masks.append(mask)
 
-    return target, mask, pxverts
+    return target, masks, pxverts
 
 
 def draw_polygon_mask(verts, size):
@@ -831,7 +801,8 @@ def check_memory_requirements(example, res_patch, maxmem = 1.0,
     return data_memoryGB
 
 @timing
-def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
+def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio, 
+                 mode=None):
     example, scaling = normalize_picture(example0, lib_size)
     res_patch, res_patch0, overlap, overlap0 = create_patch_params(example0, scaling,
                                                                    overlap_ratio,
@@ -842,9 +813,166 @@ def prepare_tree(example0, lib_size, overlap_ratio, patch_ratio):
                                               maxmem=get_mem_limit(),
                                               disable_safety_check=True)
     logger.info(f"using approx. {data_memoryGB:2f} GB in RAM.")
-    data = create_patch_data(example, res_patch, max_co)
-    index = init_ann_index(data)
+    try:
+        if mode==None:
+            data = create_patch_data(example, res_patch, max_co)
+            index = init_ann_index(data)
+        else:
+            if ('both' in mode) or ('horizontal' in mode):
+                logger.info("init kdtree1")
+                ld = create_patch_data(example, (res_patch[0], overlap[1]), max_co)
+                l = init_ann_index(ld)
+            if ('both' in mode) or ('vertical' in mode):
+                logger.info("init kdtree2")
+                td = create_patch_data(example, (overlap[0],res_patch[1]), max_co)
+                t = init_ann_index(td)
+            if 'both:':
+                logger.info("init kdtree3")
+                lt = init_ann_index(np.hstack((ld,td)))
+            index = [l,t,lt]
+    except MemoryError as err:
+        logger.info(err)
+        logger.info("example texture too large, algorithm needs "
+           "too much RAM: {totalmemoryGB:.2f}GB")
+        raise    
     return index, res_patch, res_patch0, overlap, overlap0, max_co, scaling
+
+def gen_coordinate_grid(shape, flatten=False):
+    x = np.arange(0,shape[1])
+    y = np.arange(0,shape[0])
+    #get coordinate grid
+    #TODO: this might be more elegant using np.dstack
+    grid = np.stack(np.meshgrid(y,x),axis = 2)
+    if flatten: grid = grid.reshape(-1,2)
+    return grid
+
+def gen_coordinate_map(shape):
+    grid2ch=gen_coordinate_grid(shape)
+    #TODO: this might be more elegant using np.dstack
+    grid3ch=np.stack((grid2ch[...,0],
+                      grid2ch[...,1],
+                      np.zeros(shape)),axis=2)#,axis=2)
+    return grid3ch
+
+#TODO: high quality optimization
+"""
+@timing
+def synth_patch_tex(target0, example0, 
+                    lib_size = 10000,
+                    k=1, 
+                    patch_ratio=0.1,
+                    overlap_ratio = 1/6,
+                    tol=0.1
+                    ):
+    '''
+    lib_size = 10000
+    k=1
+    patch_ratio=0.1
+    overlap_ratio = 1/6
+    tol=0.1
+    '''
+    #TODO: merge this function with the "search" and the "optimal patch"
+    # functionality to make it similar to the "synthesize_tex_patches" function
+    chan = 3
+    #target = target.copy()
+    example0 = example0[...,:chan]
+    target_map = target0.copy()
+    (trees, res_patch,
+     res_patch0, overlap,
+     overlap0, max_co,
+     scaling) = prepare_tree(example0, lib_size, overlap_ratio, patch_ratio,
+                            mode=["horizontal","vertical","both"])
+    logger.info(f"patch_size: {res_patch0}; initial scaling: {scaling}, ")
+
+    #define search grid
+    res_target0 = target0.shape[:2]
+    rpg0 = np.array(res_patch0) - overlap0
+    rpg = np.array(res_patch) - overlap
+    res_grid0 = np.ceil((res_target0-overlap0)/rpg0).astype(int)
+
+    co_map_base = gen_coordinate_map(res_patch0)
+
+    #resize target to the same scale as the scaled example
+    #this is actually important and can NOT be done "on the fly" for
+    #each 
+    target = skimage.transform.rescale(target0, scaling,
+                                        anti_aliasing=True,
+                                        multichannel=True,
+                                        preserve_range=True)#.astype(np.uint8)
+
+    example = skimage.transform.rescale(example0, scaling,
+                                        anti_aliasing=True,
+                                        multichannel=True,
+                                        preserve_range=True)#.astype(np.uint8)
+
+    #left corner (0,0)
+    for coords in tqdm(np.ndindex(*res_grid0),"iterate over image"):
+        yp,xp=np.array(coords) * rpg
+        search_area0 = target[yp:yp+res_patch[0],
+                              xp:xp+res_patch[1]].copy()
+        if coords==(0,0):
+            pa_coords_idx = pa_y,pa_x = np.array(idx2co(
+                                    random.randrange(np.product(max_co)), 
+                                    max_co)) #get first patch
+           
+            #skimage.io.imshow_collection([patch, co_map/(*example.shape[:2],1)])
+        elif coords[0]==0: #first row
+            ovl = search_area0[:,:overlap0[1]]
+            #ovl = skimage.transform.resize(ovl,
+            #                               (res_patch[0],overlap[1]),
+            #                               preserve_range=True)
+            pa_idx = find_match(ovl.flatten(), trees[0] , tol=tol, k=k)
+            pa_coords_idx = pa_y,pa_x = np.array(idx2co(pa_idx, max_co))
+
+        pa = example[pa_y:pa_y+res_patch[0],pa_x:pa_x+res_patch[1]]
+        copy_img(target,pa,(xp,yp))
+        pa_y0,pa_x0 = np.round(pa_coords_idx / scaling).astype(int)
+        pa0 = example0[pa_y0:pa_y0+res_patch0[0],pa_x0:pa_x0+res_patch0[1]]
+        copy_img(target0,pa0,(xp,yp))
+        co_map = co_map_base + (pa_y0,pa_x0,0)
+        copy_img(target_map,co_map,(xp,yp))
+            
+        #ovl = example[y:y+rp[0],x:x+rp[1]][:,-overlap[0]:].flatten()
+        
+        #if False:
+        if coords==(0,10):
+            #patch_idx = trees[0].get_arrays()[0][pa_idx].reshape(res_patch[0],-1,3)
+            patch_idx = trees[0]._raw_data[pa_idx].reshape(res_patch[0],-1,3)
+            skimage.io.imshow_collection([ovl,search_area0, pa0, patch_idx])
+            skimage.io.imshow_collection([pa0, target_map/(*example0.shape[:2],1), target])
+            break
+
+    return target_map, target
+"""
+def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
+    #TODO: merge this function with the "search" and the "optimal patch"
+    # functionality to make it similar to the "synthesize_tex_patches" function
+    example, scaling = normalize_picture(example0, libsize)
+    res_target = target.shape[:2]
+    res_patch, res_patch2, overlap, overlap2 = create_patch_params(example0, scaling,
+                                                        patch_ratio=patch_ratio)
+    res_grid = np.ceil(res_target/(res_patch2 - overlap2)).astype(int)
+
+    logger.info(f"patch_size: {res_patch2}; initial scaling: {scaling}, ")
+
+    #time.sleep(10.0)
+
+    pg = synthesize_grid(example, res_patch, res_grid, overlap, tol=.1, k=k)
+    pgimage = pg/pg.max((0,1))
+    pgimage = np.dstack((pgimage,np.zeros(pgimage.shape[:2])))
+
+    #transform pg coordinates into original source texture
+    pg2 = np.round(pg / scaling).astype(int)
+
+    target = transform_patch_grid_to_tex(None, res_patch2, pg2, example0,
+                                         overlap2,
+                                         use_quilting=True)
+
+    target2 = transform_patch_grid_to_tex(None, res_patch, pg, example,
+                                          overlap,
+                                          use_quilting=True)
+
+    return target[:res_target[0],:res_target[1]], target2, pgimage
 
 @timing
 def synthesize_tex_patches(target0, example0,
@@ -871,6 +999,8 @@ def synthesize_tex_patches(target0, example0,
 
     rp = res_patch
     #resize target to the same scale as the scaled example
+    #TODO: replace this with a "instant-scale-down" method (have a look
+    #at function documentation)
     target = skimage.transform.rescale(target0, scaling,
                                         anti_aliasing=True,
                                         multichannel=True,
@@ -905,48 +1035,6 @@ def calculate_face_normal(f):
     n = sign(np.cross(v1,v2))
     return n
 
-def isolate_edge():
-    """isolates an edge and copies the area around the edge
-    in a separate canvas"""
-
-    offset = 10
-
-    n = [calculate_face_normal(f) for f in verts]
-
-    #get a rectangle on the "inner" side of each edge
-    #flip x & y for the cross product because of reversed coordinate order in numpy arrays
-    #and image indexing
-
-    v_ov1 = verts[0][3]-verts[0][0]
-    v_ov2 = verts[0][2]-verts[0][1]
-
-    edge_area = np.array((*e1,
-                 e1[1]+normalized(v_ov2)*offset/math.sin(calc_angle_vec(-v1,v_ov2)),
-                 e1[0]+normalized(v_ov1)*offset/math.sin(calc_angle_vec(v1,v_ov1))))
-
-    y0,x0,y1,x1 = np.floor(shapely.geometry.Polygon(edge_area).bounds).astype(int)
-    y1+=1;x1+=1
-    edge_synth_target = target1[y0:y1,x0:x1].copy()
-    #vi = normalized(np.cross(v1[::-1],(0,0,n[0])))[:2][::-1]
-
-    #e1_i = e1 + vi*offset
-    target1[skimage.draw.polygon(*edge_area.T)] *= (0.5,0.5,1.0,1.0)
-
-    skimage.io.imshow_collection([edge_synth_target])
-    #angle between x-axis and edge
-    alpha = math.atan2(*v1)
-    tmp = skimage.transform.rotate(edge_synth_target, alpha*180/math.pi, resize=True, order=3)
-    skimage.io.imshow_collection([tmp])
-
-    skimage.io.imshow_collection([target1])
-
-    cy = np.round(math.sin(alpha)*(x1-x0)).astype(int)
-    h = offset+5
-    skimage.io.imshow_collection([tmp[cy-h:cy,:]])
-
-#TODO: "functionalize" the below function.
-# this means: calculate all the below things in individual matrices
-# and numpy arrays
 #@timing
 def transfer_patch_pixelwise(target, search_area0, 
                              yp,xp,
@@ -959,6 +1047,8 @@ def transfer_patch_pixelwise(target, search_area0,
                              tol=0.0):
     """This function takes an edge and pixel, and searches for the corresponding
     pixel at another edge.
+    
+    TODO: cythonize or do other stuff with this function (nuitka, scipy, numba)
     """
     e1,e2,v1,v2,e2_perp_left = edge_info
     """
@@ -1209,6 +1299,9 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
                       res_patch0[1]:-res_patch0[1]], tree_info
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    logger.setLevel(logging.INFO)
+    logging.getLogger('tex_synthesize').setLevel(logging.INFO)
     #example0 = example = skimage.io.imread("textures/3.gif") #load example texture
     example0 = skimage.io.imread("textures/rpitex.png")
     example0 = example0/255
@@ -1219,11 +1312,25 @@ if __name__ == "__main__":
     # a custom KDTree) This KDTree could be based on different, hierarchical
     # image resolutions for the error-search
 
-    #lower brightnss of bounding box for debugging ppurposes
+    #TODO: test "overhaul" of images with correspondance maps
+    
+
+    #test image synthesis function
+    if True:
+        seed = 31
+        np.random.seed(seed)
+        random.seed(seed)#2992)#25 is chip + original img
+        
+        channels = 3 #TODO: prepare function for 1,3 and 4 channels
+        target0 = np.full((800,1000,channels),0.0)
+        target_map, target, ta_map = synth_patch_tex(target0,example0)
+        skimage.io.imshow_collection([target_map, target, ta_map])
+
     if False:
         np.random.seed(10)
         random.seed(50)#2992)#25 is chip + original img
-        target1, _, verts = generate_test_target_with_fill_mask(example0)
+        target1, mask, verts = generate_test_target_with_fill_mask(example0)
+        skimage.io.imshow_collection([target1,mask])
         target1[:]=(0,0.5,0,1)
         for v in verts:
             y0,x0,y1,x1 = np.array(shapely.geometry.Polygon(v).bounds).astype(int)
@@ -1246,7 +1353,7 @@ if __name__ == "__main__":
         skimage.io.imshow_collection([target_new, target1])
     
     #test image copying with "wrong" boundaries
-    if True:
+    if False:
         tmp = np.full((100,100,4),(1.0,0,0,1))
         search_area0 = np.random.random((28,28,4))
         pos = (5,10)
