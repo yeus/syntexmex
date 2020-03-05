@@ -51,6 +51,7 @@ import numpy as np
 import threading, queue, time
 import functools
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 """
 To set up the logging module to your needs, create a file $HOME/.config/blender/{version}/scripts/startup/setup_logging.py (this is on Linux, but you’re likely a developer, so you’ll know where to find this directory). If the folder doesn’t exist yet, create it. I like to put something like this in there:
@@ -77,7 +78,7 @@ def register():
 #sys.path.append(main_dir)
 main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib') #addon dir "__init__.py" + lib
 sys.path.append(main_dir)
-print(main_dir)
+logger.info(f"add library directory to syntexmex: {main_dir}")
 
 from . import uv_prepare as up
 importlib.reload(up)
@@ -166,8 +167,8 @@ to generate the texture""",
         obj, bm = up.create_bmesh_from_active_object()
         uv_layer = bm.loops.layers.uv['UVMap']
         
-        print(self.example_image)
-        print(self.target_image)
+        logging.info(self.example_image)
+        logging.info(self.target_image)
         
         example_image = bpy.data.images[self.example_image]
         self.target = bpy.data.images[self.target_image]
@@ -455,10 +456,37 @@ patches (lowres): {res_patch[::-1]} px
 overlap (highres): {overlap0[::-1]}
 overlap (lowres): {overlap[::-1]}""")                
 
-            #col.prop(scene.syntexmexsettings,None)
-            #TODO: make it possible to open images
-            #
-            #layout.operator("object.piperator_delete")
+
+class syntexmex_advanced_panel(bpy.types.Panel):
+    """Creates a Panel in the scene context of the properties editor"""
+    bl_label = "Syntexmex advanced configuration panel"
+    bl_idname = "SYNTEXMEX_PT_syntexmex_advanced_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'syntexmex'
+    #bl_context = "tool"
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+
+        scene = context.scene
+        props = scene.syntexmexsettings
+
+        col.label(text="debugging options:")
+        col.prop(props,"advanced_debugging", text="enable advanced console logs")
+
+def update_debugging(self, context):
+    scene = context.scene
+    props = scene.syntexmexsettings
+
+    logging.basicConfig(level=logging.INFO)
+    logger.info(f"Set advanced infos to: {props.advanced_debugging}")
+    if props.advanced_debugging:
+        logging.disable(logging.NOTSET)
+    else:
+        logging.disable(logging.INFO)
+    return None
 
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
@@ -499,11 +527,18 @@ to generate the texture""",
             description="Seed value for predictable texture generation",
             default = 0
             )
+    advanced_debugging: bpy.props.BoolProperty(
+            name="advanced debugging",
+            description="Enable Advanced Debugging (in console)",
+            default = False,
+            update = update_debugging
+            )
 
 
 
 classes = (
     syntexmex_panel,
+    syntexmex_advanced_panel,
     syntexmex,
     clear_target_texture
 )
