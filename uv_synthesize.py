@@ -37,7 +37,7 @@ import functools
 sign = functools.partial(math.copysign, 1) # either of these
 import logging
 logger = logging.getLogger(__name__)
-import tex_synthesize as ts
+from . import tex_synthesize as ts
 import pickle
 
 

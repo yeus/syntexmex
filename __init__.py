@@ -73,15 +73,15 @@ def register():
 # if blend_dir not in sys.path:
 #   sys.path.append(blend_dir)
 # temporarily appends the folder containing this file into sys.path
-main_dir = os.path.dirname(bpy.data.filepath) #blender directory
-sys.path.append(main_dir)
+#main_dir = os.path.dirname(bpy.data.filepath) #blender directory
+#sys.path.append(main_dir)
 main_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib') #addon dir "__init__.py" + lib
 sys.path.append(main_dir)
 print(main_dir)
 
-import uv_prepare as up
+from . import uv_prepare as up
 importlib.reload(up)
-import uv_synthesize as us
+from . import uv_synthesize as us
 importlib.reload(us)
 importlib.reload(us.ts)
 
