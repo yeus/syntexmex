@@ -789,13 +789,13 @@ def fill_area_with_texture(target, example0,
     #area.boundary.buffer(100)
 
     logger.info("synthesize texture")
-    fill1, fill2, pgimg = synth_patch_tex(bbox, example0, k=1,
+    fill1, ta_map = synth_patch_tex(bbox, example0, k=1,
                                           patch_ratio=patch_ratio, 
                                           libsize=libsize)
     copy_img(target, fill1, (x0,y0), bmask)
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
-    return target, bmask, fill1, fill2, pgimg
+    return target, ta_map
 
 def calculate_memory_consumption(res_ex, res_patch, 
                                  ch_num, itemsize):
@@ -992,7 +992,7 @@ def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     #                                      overlap,
     #                                      use_quilting=True)
 
-    return target[:res_target[0],:res_target[1]], pgimage, ta_map/(*example0.shape[:2][::-1],1)
+    return target[:res_target[0],:res_target[1]], ta_map/(*example0.shape[:2][::-1],1)
 
 @timing
 def synthesize_tex_patches(target0, example0,
