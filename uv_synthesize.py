@@ -127,7 +127,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                 island_mask[skimage.draw.polygon(*uvs.T)]=1.0
             island_mask = island_mask[ymin:ymax,xmin:xmax]>0
 
-            ts.fill_area_with_texture(target, example,
+            target, ta_map = ts.fill_area_with_texture(target, example,
                                       patch_ratio=patch_ratio, libsize = libsize,
                                       bounding_box=(ymin,xmin,ymax,xmax),
                                       mask = island_mask)
