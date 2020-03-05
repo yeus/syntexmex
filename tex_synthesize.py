@@ -105,13 +105,18 @@ def timing(f):
 
 @timing
 def init_ann_index(data):
+    """
+    TODO: parameterize quality of ANN search
+    """
+    #metric='euclidean'
+    metric='manhattan'
     if use_pynnd: 
-        index = pynnd.NNDescent(data,'manhattan',
-                                n_neighbors=5,
+        index = pynnd.NNDescent(data,metric,
+                                n_neighbors=3,#steers the quality of the algorithm
                                 n_jobs=-1 #-1: use all processors
                                 )
     elif use_sklearn: 
-        index = sklearn.neighbors.KDTree(data, metric='manhattan')#'l2'
+        index = sklearn.neighbors.KDTree(data, metric=metric)#'l2'
     return index
 
 def query_index(index, data, k):
@@ -199,7 +204,10 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
     rpg = np.array(res_patch) - overlap
     if res is None: res = rpg * pg.shape[:2] + overlap
     target = np.zeros((res[0],res[1],ch_num), dtype = example.dtype)
-
+    ta_map = np.zeros((res[0],res[1],3))
+    
+    target_map_patch_base = gen_coordinate_map(res_patch)
+    onemask = np.ones(res_patch)
     for iy,ix in np.ndindex(pg.shape[:2]):
         #if (ix, iy) == (3,2): break
         x = ix * rpg[1]
@@ -220,16 +228,27 @@ def transform_patch_grid_to_tex(res, res_patch, pg, example,
         elif ix==0: ovs=(0,overlap[0],0,0) #first column
         else: ovs=(overlap[1],overlap[0],0,0) #rest of the grid
 
-        if (iy==0 and ix==0) or (not use_quilting): pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
+        if (iy==0 and ix==0) or (not use_quilting): 
+            pa = example[y0:y0+res_patch[0],x0:x0+res_patch[1]].copy()
+            mask = onemask
         else:
             ta_patch = target[y:y+res_patch[0],x:x+res_patch[1]]
-            pa,_,_,_ = optimal_patch(ta_patch, example, res_patch, ovs, (y0,x0), (y,x))
+            pa, _, _, mask = optimal_patch(ta_patch, example, 
+                                           res_patch, ovs, (y0,x0), (y,x))
 
         #skimage.io.imshow_collection([pa, ov_h[0], b_h, ov_v[0], b_v])
         copy_img(target, pa, (x,y))
         #print((ix,iy),pg[iy,ix])
+        
+        ta_map_patch = target_map_patch_base + (x0,y0,0)
+        #TODO: find a better method how to use "partial" coordinate transfer
+        #or in other words: "mixes" which appear for example at smoothed
+        #out and blended optimal borders
+        copy_img(ta_map, ta_map_patch, (x,y), mask=mask>0)
+        #copy_img(ta_map, ta_map_patch, (x,y))
 
-    return target
+
+    return target, ta_map
 
 def overlap_slices(overlap):
     """define slices for overlaps"""
@@ -397,7 +416,8 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         raise
 
     pg = np.full(shape=(*res_grid,2), fill_value=-1, dtype=int)
-    pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
+    #pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
+    pg[0,0]=(0,0)
 
     #TODO: synthesize an arbitrary pic with the overlap database generated from example
     # but using a different source texture to "mix" two textures
@@ -958,21 +978,21 @@ def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     #time.sleep(10.0)
 
     pg = synthesize_grid(example, res_patch, res_grid, overlap, tol=.1, k=k)
-    pgimage = pg/pg.max((0,1))
-    pgimage = np.dstack((pgimage,np.zeros(pgimage.shape[:2])))
 
     #transform pg coordinates into original source texture
     pg2 = np.round(pg / scaling).astype(int)
+    pgimage = (pg2/example0.shape[:2])[...,::-1]
+    pgimage = np.dstack((pgimage,np.zeros(pgimage.shape[:2])))
 
-    target = transform_patch_grid_to_tex(None, res_patch2, pg2, example0,
+    target, ta_map = transform_patch_grid_to_tex(None, res_patch2, pg2, example0,
                                          overlap2,
                                          use_quilting=True)
 
-    target2 = transform_patch_grid_to_tex(None, res_patch, pg, example,
-                                          overlap,
-                                          use_quilting=True)
+    #target2, ta_map = transform_patch_grid_to_tex(None, res_patch, pg, example,
+    #                                      overlap,
+    #                                      use_quilting=True)
 
-    return target[:res_target[0],:res_target[1]], target2, pgimage
+    return target[:res_target[0],:res_target[1]], pgimage, ta_map/(*example0.shape[:2][::-1],1)
 
 @timing
 def synthesize_tex_patches(target0, example0,
@@ -1317,14 +1337,16 @@ if __name__ == "__main__":
 
     #test image synthesis function
     if True:
-        seed = 31
+        seed = 32
         np.random.seed(seed)
         random.seed(seed)#2992)#25 is chip + original img
         
         channels = 3 #TODO: prepare function for 1,3 and 4 channels
         target0 = np.full((800,1000,channels),0.0)
-        target_map, target, ta_map = synth_patch_tex(target0,example0)
-        skimage.io.imshow_collection([target_map, target, ta_map])
+        target, pgmap, ta_map = synth_patch_tex(target0,example0,
+                                                libsize=256*256,
+                                                patch_ratio=0.1)
+        skimage.io.imshow_collection([target, pgmap, ta_map])
 
     if False:
         np.random.seed(10)
