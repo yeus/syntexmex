@@ -460,6 +460,38 @@ overlap (lowres): {overlap[::-1]}""")
             #
             #layout.operator("object.piperator_delete")
 
+class synth_PBR_texture(bpy.types.Operator):
+    """This operator synthesizes PBR textures from a synthmap
+    (an image in which the pixel values are coordinates to an example image)"""
+    bl_idname = "texture.syntexmex_pbr_texture"
+    bl_label = "Synthesize PBR textures using a synth-map"
+    bl_category = 'syntexmex'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    example_image: bpy.props.StringProperty()
+    synth_map: bpy.props.StringProperty()
+    
+
+class syntexmex_pbr_panel(bpy.types.Panel):
+    """Creates a Panel in the scene context of the properties editor"""
+    bl_label = "Syntexmex PBR panel"
+    bl_idname = "SYNTEXMEX_PT_syntexmex_pbr_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'syntexmex'
+    #bl_context = "tool"
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+
+        scene = context.scene
+        props = scene.syntexmexsettings
+        op = col.operator("texture.syntexmex_pbr_texture", 
+                          text = "Synthesize UV example based texture")
+        
+        col.prop(props,"material_textures")
+
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
     synth_progress: bpy.props.FloatProperty(
@@ -499,6 +531,7 @@ to generate the texture""",
             description="Seed value for predictable texture generation",
             default = 0
             )
+    material_textures : bpy.props.CollectionProperty(type=bpy.props.StringProperty)
 
 
 
