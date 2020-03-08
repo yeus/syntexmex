@@ -211,7 +211,10 @@ to generate the texture""",
         self.target.pixels[:] = target.flatten()
         self.target.update()
         
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
+        
         if ta_map is not None:
+            ta_map = np.dstack((ta_map,np.ones(ta_map.shape[:2])))
             self.ta_map.pixels[:] = ta_map.flatten()
             self.ta_map.update()  
 
