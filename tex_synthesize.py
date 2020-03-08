@@ -793,9 +793,15 @@ def fill_area_with_texture(target, example0,
                                           patch_ratio=patch_ratio, 
                                           libsize=libsize)
     copy_img(target, fill1, (x0,y0), bmask)
+    #ta_map_final = np.full((*target.shape[:2],3),[0,0,0])
+    #ta_map_final = np.full([*target.shape[:2],3],0)
+    ta_map_final = np.zeros([*target.shape[:2],3])
+    #copy_img(ta_map_final, ta_map, (x0,y0), bmask)
+    copy_img(ta_map_final, ta_map, (x0,y0), bmask)
+    #TODO: somehow the copy operation doesnt work here
     #import ipdb; ipdb.set_trace() # BREAKPOINT
 
-    return target, ta_map
+    return target, ta_map_final
 
 def calculate_memory_consumption(res_ex, res_patch, 
                                  ch_num, itemsize):
@@ -992,7 +998,9 @@ def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     #                                      overlap,
     #                                      use_quilting=True)
 
-    return target[:res_target[0],:res_target[1]], ta_map/(*example0.shape[:2][::-1],1)
+    ta_map = ta_map/(*example0.shape[:2][::-1],1)
+    return (target[:res_target[0],:res_target[1]], 
+            ta_map[:res_target[0],:res_target[1]])
 
 @timing
 def synthesize_tex_patches(target0, example0,
@@ -1343,10 +1351,10 @@ if __name__ == "__main__":
         
         channels = 3 #TODO: prepare function for 1,3 and 4 channels
         target0 = np.full((800,1000,channels),0.0)
-        target, pgmap, ta_map = synth_patch_tex(target0,example0,
+        target, ta_map = synth_patch_tex(target0,example0,
                                                 libsize=256*256,
                                                 patch_ratio=0.1)
-        skimage.io.imshow_collection([target, pgmap, ta_map])
+        skimage.io.imshow_collection([target, ta_map])
 
     if False:
         np.random.seed(10)
