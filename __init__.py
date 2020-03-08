@@ -173,6 +173,11 @@ to generate the texture""",
         example_image = bpy.data.images[self.example_image]
         self.target = bpy.data.images[self.target_image]
         
+        ta_width,ta_height=self.target.size
+        self.ta_map = bpy.data.images.new("ta_map",ta_width,ta_height,
+                                          alpha=False,float_buffer=True)
+        #BlendDataImages.new(name, width, height, alpha=False, float_buffer=False, stereo3d=False, is_data=False, tiled=False)
+        
         examplebuf, targetbuf = up.init_texture_buffers(example_image,
                                                         self.target, self.example_scaling)
                 
@@ -201,15 +206,17 @@ to generate the texture""",
                                         kwargs = {})
         self._thread.start()
       
-    def write_image(self,target):
+    def write_images(self,target,ta_map=None):
         # Write back to blender image.
         self.target.pixels[:] = target.flatten()
         self.target.update()
-        #nt.save()
-        logger.info("synced images!")
-        #return {'FINISHED'}
-        #return {'RUNNING_MODAL'}"""
+        
+        if ta_map is not None:
+            self.ta_map.pixels[:] = ta_map.flatten()
+            self.ta_map.update()  
 
+        logger.info("synced images!")
+            
     def execute(self, context):
         def testworker(conn):
             for i in range(10):
@@ -257,7 +264,8 @@ to generate the texture""",
             self.msg_queue.task_done()
             logger.info(f"received a new msg!!")
         if msg is not None:
-            self.write_image(msg)
+            target,ta_map = msg
+            self.write_images(target,ta_map)
             context.scene.syntexmexsettings.synth_progress += 1.0/self.algorithm_steps
             self._region.tag_redraw()
             self._area.tag_redraw()
@@ -312,7 +320,7 @@ class uvs2json(bpy.types.Operator):
 #https://wiki.blender.org/wiki/Reference/Release_Na.otes/2.80/Python_API/Addons
 class syntexmex_panel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "Syntexmex configuration panel"
+    bl_label = "Syntexmex Configuration"
     bl_idname = "SYNTEXMEX_PT_syntexmex_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -388,7 +396,7 @@ class syntexmex_panel(bpy.types.Panel):
         multiline_label(col2,"> "+showtext)
         
         col.separator(factor=2.0)
-        if props.synth_progress < 0.0001: #if algorithm isn running
+        if props.synth_progress < 0.0001: #if algorithm isnt running
             ######  algorithm start buttons for different run modes
             col3 = col.column()
             if img_init and canrun: col3.enabled=True
@@ -397,20 +405,23 @@ class syntexmex_panel(bpy.types.Panel):
             col2.scale_y = 2.0
             op1 = col2.operator("texture.syntexmex", 
                                 text = "Synthesize UV example based texture")
-            self.copy_to_operator(op1,props)
             
             #col.scale_y = 1.0
             col3.separator(factor=2.0)
             op2 = col3.operator("texture.syntexmex", 
                                 text = "Synthesize textures to UV islands")
-            self.copy_to_operator(op2,props)
-            op2.synth_tex=True
-            op2.seamless_UVs=False
+            
             op3 = col3.operator("texture.syntexmex",
                                 text = "Make UV seams seamless")
-            self.copy_to_operator(op3,props)
-            op3.synth_tex=False
-            op3.seamless_UVs=True
+            
+            if img_init and canrun:
+                self.copy_to_operator(op1,props)
+                self.copy_to_operator(op2,props)
+                op2.synth_tex=True
+                op2.seamless_UVs=False
+                self.copy_to_operator(op3,props)
+                op3.synth_tex=False
+                op3.seamless_UVs=True
 
 
             #####algorithm properties
@@ -459,12 +470,13 @@ overlap (lowres): {overlap[::-1]}""")
 
 class syntexmex_advanced_panel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "Syntexmex advanced configuration panel"
+    bl_label = "Advanced Settings"
     bl_idname = "SYNTEXMEX_PT_syntexmex_advanced_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'syntexmex'
     #bl_context = "tool"
+    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         layout = self.layout
@@ -496,29 +508,43 @@ class synth_PBR_texture(bpy.types.Operator):
     bl_category = 'syntexmex'
     bl_options = {'REGISTER', 'UNDO'}
     
-    example_image: bpy.props.StringProperty()
     synth_map: bpy.props.StringProperty()
+    source_material : bpy.props.StringProperty()
+    source_image : bpy.props.StringProperty()
+    
+    def execute(self, context):
+        logger.info("start PBR synthesis")
+        return {'FINISHED'}
     
 
+#TODO: if we want a list o something:
+#https://sinestesia.co/blog/tutorials/using-uilists-in-blender/
 class syntexmex_pbr_panel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "Syntexmex PBR panel"
+    bl_label = "PBR synthesis"
     bl_idname = "SYNTEXMEX_PT_syntexmex_pbr_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'syntexmex'
     #bl_context = "tool"
+    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         layout = self.layout
-        col = layout.column()
+        layout.use_property_decorate = False
+        ob = context.active_object
 
         scene = context.scene
         props = scene.syntexmexsettings
-        op = col.operator("texture.syntexmex_pbr_texture", 
-                          text = "Synthesize UV example based texture")
-        
-        col.prop(props,"material_textures")
+        op = layout.operator("texture.syntexmex_pbr_texture", 
+                           text = "Synthesize UV example based texture")
+
+        layout.use_property_split = True
+        layout.label(text="active synthmap:")
+        layout.template_ID(props,"active_synthmap", open="image.open")
+        layout.prop_search(props,"source_material", bpy.data, "materials")
+        layout.label(text="source image:")
+        layout.template_ID(props,"source_image", open="image.open")
 
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
@@ -559,20 +585,26 @@ to generate the texture""",
             description="Seed value for predictable texture generation",
             default = 0
             )
-    material_textures : bpy.props.CollectionProperty(type=bpy.props.StringProperty)
+    source_material : bpy.props.PointerProperty(name="source material", 
+                                                type=bpy.types.Material)
+    source_image : bpy.props.PointerProperty(name="source image",
+                                             type=bpy.types.Image)
+    active_synthmap : bpy.props.PointerProperty(name="active synthmap", 
+                                                  type=bpy.types.Image)
     advanced_debugging: bpy.props.BoolProperty(
-            name="advanced debugging",
+            name="Advanced Debugging",
             description="Enable Advanced Debugging (in console)",
-            default = False,
+            default = True,
             update = update_debugging
             )
 
 
-
 classes = (
     syntexmex_panel,
+    syntexmex_pbr_panel,
     syntexmex_advanced_panel,
     syntexmex,
+    synth_PBR_texture,
     clear_target_texture
 )
 register_panel, unregister_panel = bpy.utils.register_classes_factory(classes)
@@ -597,7 +629,6 @@ if __name__ == "__main__":
     # pipe_operator.register()
     # bpy.ops.mesh.add_pipes()
     register()
-
     # debugging
     #bpy.ops.mesh.add_pipes(number=5, mode='skin', seed = 11)
 

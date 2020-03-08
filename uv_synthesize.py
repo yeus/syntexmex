@@ -37,7 +37,10 @@ import functools
 sign = functools.partial(math.copysign, 1) # either of these
 import logging
 logger = logging.getLogger(__name__)
-from . import tex_synthesize as ts
+try:
+    from . import tex_synthesize as ts
+except ImportError:
+    import tex_synthesize as ts
 import pickle
 
 
@@ -131,7 +134,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                       patch_ratio=patch_ratio, libsize = libsize,
                                       bounding_box=(ymin,xmin,ymax,xmax),
                                       mask = island_mask)
-            if msg_queue: msg_queue.put(target)
+            if msg_queue: msg_queue.put((target,ta_map))
 
     if stop_event.is_set(): 
         logger.info("stopping_thread")
@@ -148,7 +151,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info,
                                            debug_level=0)
-            if msg_queue: msg_queue.put(target)
+            if msg_queue: msg_queue.put((target,ta_map))
             if (edge_iterations != 0) and (i >= edge_iterations): break 
             if stop_event.is_set(): 
                 logger.info("stopping_thread")
@@ -156,7 +159,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
-    return target
+    return (target,ta_map)
 
 def check_face_orientation(face):
     edge_vecs = np.roll(face,1,0)-face
@@ -186,11 +189,11 @@ if __name__=="__main__":
     
     
     target = synthesize_textures_on_uvs(synth_tex=True,
-                                        seamless_UVs=True,
+                                        seamless_UVs=False,
                                         edge_iterations=0,
                                         **uv_info)
     logger.info("finished test!")
-    skimage.io.imshow_collection([target])
+    skimage.io.imshow_collection([target[0],target[1]])
     #uv_info['edge_infos'][0]
 
     #faces = uv_info['island_uvs']
