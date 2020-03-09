@@ -47,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 #ann_library = "pynndescent"
-ann_library = "sklearn"
+ann_library = "pynndescent"
 use_pynnd, use_sklearn=False,False
 if ann_library=="pynndescent":
     import pynndescent as pynnd
@@ -416,8 +416,8 @@ def synthesize_grid(example, res_patch, res_grid, overlap, tol = 0.1, k=5):
         raise
 
     pg = np.full(shape=(*res_grid,2), fill_value=-1, dtype=int)
-    #pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
-    pg[0,0]=(0,0)
+    pg[0,0] = idx2co(random.randrange(pnum), max_co) #get first patch
+    #pg[0,0]=(0,0)
 
     #TODO: synthesize an arbitrary pic with the overlap database generated from example
     # but using a different source texture to "mix" two textures
@@ -767,7 +767,7 @@ def get_poly_levelset(verts, width=10):
     return levelset, bbox_px
 
 @timing
-def fill_area_with_texture(target, example0, 
+def fill_area_with_texture(target, example0, ta_map_final=None,
                            patch_ratio=0.1, libsize = 128*128,
                            verts=None, mask = None, bounding_box = None):
     if bounding_box is None:
@@ -795,7 +795,7 @@ def fill_area_with_texture(target, example0,
     copy_img(target, fill1, (x0,y0), bmask)
     #ta_map_final = np.full((*target.shape[:2],3),[0,0,0])
     #ta_map_final = np.full([*target.shape[:2],3],0)
-    ta_map_final = np.zeros([*target.shape[:2],3])
+    if ta_map_final is None: ta_map_final = np.zeros([*target.shape[:2],3])
     #copy_img(ta_map_final, ta_map, (x0,y0), bmask)
     copy_img(ta_map_final, ta_map, (x0,y0), bmask)
     #TODO: somehow the copy operation doesnt work here
