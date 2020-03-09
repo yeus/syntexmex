@@ -47,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 #ann_library = "pynndescent"
-ann_library = "pynndescent"
+ann_library = "sklearn"
 use_pynnd, use_sklearn=False,False
 if ann_library=="pynndescent":
     import pynndescent as pynnd
@@ -998,7 +998,6 @@ def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     #                                      overlap,
     #                                      use_quilting=True)
 
-    ta_map = ta_map/(*example0.shape[:2][::-1],1)
     return (target[:res_target[0],:res_target[1]], 
             ta_map[:res_target[0],:res_target[1]])
 
@@ -1069,9 +1068,11 @@ def transfer_patch_pixelwise(target, search_area0,
                              edge_info,
                              fromtarget,
                              face_source,
+                             ta_map = None,
                              sub_pixels = 1,
                              mask = None,
                              pa = None,
+                             ta_pa = None,
                              tol=0.0):
     """This function takes an edge and pixel, and searches for the corresponding
     pixel at another edge.
@@ -1156,11 +1157,13 @@ def transfer_patch_pixelwise(target, search_area0,
                    #copy pixel from generated patch back to target
                    #target[tuple(px2_coords)][:3] = pa[patch_index][:3]*mask[patch_index]
                    target[tuple(px2_coords)] = pa[patch_index]
+                   if ta_map is not None:
+                       ta_map[tuple(px2_coords)] = ta_pa[patch_index]
 
 def check_inside_convex_quadrilateral(corners, p, tol=0):
     """be careful!, because this function is based
     on whether the coordinate system is left- or right-handed"""
-    #TODO: vectorize this function or make some cython-magic
+    #TODO: vectorize this function or implement some cython-magic
     sv = np.roll(corners, 1, 0) - corners
     pv = p-corners
 
@@ -1183,7 +1186,8 @@ def check_inside_face(polygon, point, tol=0.0):
         return face.contains(shapely.geometry.Point(*point))
 
 @timing
-def make_seamless_edge(edge1,edge2, target, example0, patch_ratio, 
+def make_seamless_edge(edge1,edge2, target, example0, ta_map, 
+                       patch_ratio, 
                        lib_size, debug_level=0,
                        tree_info = None):
     #TODO: make sure that the "longer" edge is defined as
@@ -1225,7 +1229,9 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
     #import ipdb; ipdb.set_trace() # BREAKPOINT
     #pad the target to make sure we can do all operations at its
     #borders
-    target_new = np.pad(target.copy(),((res_patch0[0],res_patch0[0]),
+    target_new = np.pad(target,((res_patch0[0],res_patch0[0]),
+                                    (res_patch0[1],res_patch0[1]),(0,0)), mode='edge')
+    ta_map = np.pad(ta_map,((res_patch0[0],res_patch0[0]),
                                     (res_patch0[1],res_patch0[1]),(0,0)), mode='edge')
     #transform coordinates to padded target
     e1+=res_patch0
@@ -1234,15 +1240,8 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
     verts2+=res_patch0
 
     edge_dir = normalized(v1)
-    #TODO: iterate over the "longer" of the two edges. This way we do not
-    #need to scale the patches? --> we also have to ransfer back so that
-    #doesnt really make sense...  the only thin is:
-    #it might be better to have the transoformation from the optimized patch
-    #back to the second edge with fewer
-    #"disturbances" meaning: it would be better to have the second edge the
-    #shorter one. While it is not as important to have an
-    #undisturbed view search patch
     step_width = min(res_patch0)*0.5
+    target_map_patch_base = gen_coordinate_map(res_patch0)
     for counter, i in enumerate(np.arange(0,norm(v1)+step_width,step_width)):
         # TODO: for the corners we need to search the faces and edges
         # connected to this corner to fill the patc with corresponding
@@ -1280,7 +1279,10 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
         co_p0 = np.round(co_p / scaling).astype(int)
         ovs = np.r_[overlap0,overlap0]
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
-                                         ovs, co_p0, (yp,xp))        
+                                         ovs, co_p0, (yp,xp))
+        
+        ta_pa = target_map_patch_base + [*co_p0,0]
+        
         if debug_level>0: #for debugging
             search_area0[:,:,0:2]=(1,1)
             pa0_r = pa0.copy()
@@ -1299,6 +1301,8 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
                                      sub_pixels = 2,
                                      mask = mask,
                                      pa = pa,
+                                     ta_pa = ta_pa,
+                                     ta_map = ta_map,
                                      tol=tol)
         
         
@@ -1313,6 +1317,8 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
         #mask_right_optimal = np.minimum(mask_sides==0, mask>0)
         mask_right_optimal = np.minimum(mask>0, mask_inside>0)
         copy_img(target_new, pa0, (xp,yp), mask_right_optimal)
+        
+        copy_img(ta_map, ta_pa, (xp,yp), mask_right_optimal)
 
         #if counter == 2:
         if False:#debug_level>0:#counter == 2:
@@ -1323,8 +1329,11 @@ def make_seamless_edge(edge1,edge2, target, example0, patch_ratio,
             #break
 
     #import ipdb; ipdb.set_trace() # BREAKPOINT
-    return target_new[res_patch0[0]:-res_patch0[0],
-                      res_patch0[1]:-res_patch0[1]], tree_info
+    return (target_new[res_patch0[0]:-res_patch0[0],
+                      res_patch0[1]:-res_patch0[1]], 
+            ta_map[res_patch0[0]:-res_patch0[0],
+                  res_patch0[1]:-res_patch0[1]], 
+            tree_info)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -1354,6 +1363,7 @@ if __name__ == "__main__":
         target, ta_map = synth_patch_tex(target0,example0,
                                                 libsize=256*256,
                                                 patch_ratio=0.1)
+        ta_map = ta_map/np.array([*example0.shape[:2][::-1],1])
         skimage.io.imshow_collection([target, ta_map])
 
     if False:
