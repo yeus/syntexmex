@@ -77,6 +77,9 @@ def tqdm(iterator, *args, **kwargs):
 
 GB = 1.0/1024**3 #GB factor
 
+def convert_synthmap2img(synthmap, example):
+    return synthmap/(*example.shape[:2][::-1],1)
+
 @ts.timing
 def synthesize_textures_on_uvs(synth_tex=False,
                                seamless_UVs=False,
@@ -132,11 +135,11 @@ def synthesize_textures_on_uvs(synth_tex=False,
                 island_mask[skimage.draw.polygon(*uvs.T)]=1.0
             island_mask = island_mask[ymin:ymax,xmin:xmax]>0
 
-            target, ta_map = ts.fill_area_with_texture(target, example,
+            target, ta_map = ts.fill_area_with_texture(target, example, ta_map,
                                       patch_ratio=patch_ratio, libsize = libsize,
                                       bounding_box=(ymin,xmin,ymax,xmax),
                                       mask = island_mask)
-            if msg_queue: msg_queue.put((target,ta_map))
+            if msg_queue: msg_queue.put((target,convert_synthmap2img(ta_map,example)))
 
     if stop_event.is_set(): 
         logger.info("stopping_thread")
@@ -156,7 +159,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info,
                                            debug_level=0)
-            if msg_queue: msg_queue.put((target,ta_map))
+            if msg_queue: msg_queue.put((target,convert_synthmap2img(ta_map,example)))
             if (edge_iterations != 0) and (i >= edge_iterations): break 
             if stop_event.is_set(): 
                 logger.info("stopping_thread")
@@ -164,7 +167,8 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
-    return (target,ta_map/(*example.shape[:2][::-1],1))
+    return (target,
+            convert_synthmap2img(ta_map,example))
 
 def check_face_orientation(face):
     edge_vecs = np.roll(face,1,0)-face
