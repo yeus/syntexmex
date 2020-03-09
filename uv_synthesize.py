@@ -168,7 +168,8 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
     return (target,
-            convert_synthmap2img(ta_map,example))
+            convert_synthmap2img(ta_map,example),
+            ta_map)
 
 def check_face_orientation(face):
     edge_vecs = np.roll(face,1,0)-face
@@ -179,7 +180,13 @@ def paint_uv_dots(faces, target):
         for v in f[:,::-1]*target.shape[:2]:
             #v=v[::-1]
             target[skimage.draw.circle(v[0],v[1],2)]=(1,0,0,1)
-            
+  
+def reconstruct_synthmap(ta_map,example):
+    """
+    TODO: reconstruct from multiple examples as well (third channel in ta_map)
+    """
+    return example[ta_map[:,:,1],ta_map[:,:,0]]
+    
     
 if __name__=="__main__":
     logging.basicConfig(level=logging.INFO)
@@ -194,16 +201,29 @@ if __name__=="__main__":
     #skimage.io.imshow_collection([uv_info["target"],uv_info["example"]])
     
     target=uv_info['target']
-    #skimage.io.imshow_collection([target])
+    example=uv_info['example']
+    #skimage.io.imshow_collection([uv_info['target']])
+    #skimage.io.imshow_collection([example])
     #paint_uv_dots(uv_info['face_uvs'],target)
     
     
-    target = synthesize_textures_on_uvs(synth_tex=True,
+    ta, ta_map1, ta_map2 = synthesize_textures_on_uvs(synth_tex=True,
                                         seamless_UVs=True,
                                         edge_iterations=0,
                                         **uv_info)
     logger.info("finished test!")
-    skimage.io.imshow_collection([target[0],target[1]])
+    skimage.io.imshow_collection([target, ta_map1, ta_map2])
+    
+    skimage.io.imsave("test.png",ta_map1)
+    
+    ta_map_recon = ta_map1*(*example.shape[:2],1)
+    ((ta_map_recon-ta_map2)**2).sum() #test the rounding-error (its pretty good)
+    
+    ta_map = ta_map2.astype(int)
+    
+    conv = reconstruct_synthmap(ta_map,example)
+    skimage.io.imshow_collection([ta,conv, ((ta-conv)**2)[...,:3]])
+
     #uv_info['edge_infos'][0]
 
     #faces = uv_info['island_uvs']
