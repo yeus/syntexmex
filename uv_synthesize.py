@@ -104,8 +104,10 @@ def synthesize_textures_on_uvs(synth_tex=False,
     np.random.seed(seed)
     random.seed(seed)
     
-    #TODO: check whether we have "left or right" sided coordinate system
+    ta_map = None
 
+    #TODO: check whether we have "left or right" sided coordinate system
+    
     if synth_tex: #generate initial textures
         #TODO: make sure all islands are taken into account
         logger.info("synthesize uv islands")
@@ -142,12 +144,15 @@ def synthesize_textures_on_uvs(synth_tex=False,
 
     if seamless_UVs:
         tree_info = None
+        if ta_map is None:
+            ta_map = np.zeros([*target.shape[:2],3])
         for i,(e1,e2) in enumerate(edge_infos):
             logger.info(f"making edge seamless: #{i}")
             #TODO: add pre-calculated island mask to better find "valid" uv pixels
             edge1 = e1[0],face_uvs[e1[1]][:,::-1]*target.shape[:2]
             edge2 = e2[0],face_uvs[e2[1]][:,::-1]*target.shape[:2]
-            target, tree_info = ts.make_seamless_edge(edge1, edge2, target, example,
+            target, ta_map, tree_info = ts.make_seamless_edge(edge1, edge2, 
+                                           target, example, ta_map,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info,
                                            debug_level=0)
@@ -159,7 +164,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #debug_image(target2)
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
-    return (target,ta_map)
+    return (target,ta_map/(*example.shape[:2][::-1],1))
 
 def check_face_orientation(face):
     edge_vecs = np.roll(face,1,0)-face
@@ -185,11 +190,12 @@ if __name__=="__main__":
     #skimage.io.imshow_collection([uv_info["target"],uv_info["example"]])
     
     target=uv_info['target']
+    #skimage.io.imshow_collection([target])
     #paint_uv_dots(uv_info['face_uvs'],target)
     
     
     target = synthesize_textures_on_uvs(synth_tex=True,
-                                        seamless_UVs=False,
+                                        seamless_UVs=True,
                                         edge_iterations=0,
                                         **uv_info)
     logger.info("finished test!")
