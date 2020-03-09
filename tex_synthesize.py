@@ -1281,7 +1281,7 @@ def make_seamless_edge(edge1,edge2, target, example0, ta_map,
         pa, pa0, ta0, mask = optimal_patch(search_area0, example0, res_patch0,
                                          ovs, co_p0, (yp,xp))
         
-        ta_pa = target_map_patch_base + [*co_p0,0]
+        ta_pa = target_map_patch_base + [*co_p0[::-1],0]
         
         if debug_level>0: #for debugging
             search_area0[:,:,0:2]=(1,1)
