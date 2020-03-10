@@ -244,6 +244,10 @@ def empty_copy(img, dtype):
     return np.full(img.shape[:2], -1, dtype = dtype)
 
 
+def blimage2array(blender_source):
+    res = np.array((blender_source.size[1],blender_source.size[0]))
+    return np.array(list(blender_source.pixels)).reshape(*res,4)
+
 def init_texture_buffers(example_image, target_texture, example_scaling):
     # numpy handles shapes in a different way then images in blender,
     # because of this, the convention, when indexing looks like this:

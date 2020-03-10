@@ -517,8 +517,23 @@ class synth_PBR_texture(bpy.types.Operator):
     
     def execute(self, context):
         logger.info("start PBR synthesis")
+        
+        logger.info(f"synthesize textures: {self.synth_map},"\
+                    f"{self.source_material},{self.source_image}")
+        
+        synthmap = up.blimage2array(bpy.data.images[self.synth_map])[...,:3]
+        source_image = up.blimage2array(bpy.data.images[self.source_image])[...,:3]
+        
+        new_map = us.reconstruct_synthmap(synthmap, source_image, mode='normalized')
+        new_img = bpy.data.images.new(self.source_image,
+                                      synthmap.shape[1],synthmap.shape[0],
+                                      alpha=False,float_buffer=False)
+        
+        #add alpha channel
+        new_img.pixels[:] = np.dstack((new_map,np.ones(new_map.shape[:2]))).flatten()
+        
+        #us.reconstruct_synthmap(self.)
         return {'FINISHED'}
-    
 
 #TODO: if we want a list o something:
 #https://sinestesia.co/blog/tutorials/using-uilists-in-blender/
@@ -541,6 +556,13 @@ class syntexmex_pbr_panel(bpy.types.Panel):
         props = scene.syntexmexsettings
         op = layout.operator("texture.syntexmex_pbr_texture", 
                            text = "Synthesize UV example based texture")
+        
+        if props.active_synthmap:
+            op.synth_map = props.active_synthmap.name
+        if props.source_material:
+            op.source_material = props.source_material.name
+        if props.source_image:
+            op.source_image = props.source_image.name
 
         layout.use_property_split = True
         layout.label(text="active synthmap:")

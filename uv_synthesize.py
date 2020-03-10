@@ -181,12 +181,18 @@ def paint_uv_dots(faces, target):
             #v=v[::-1]
             target[skimage.draw.circle(v[0],v[1],2)]=(1,0,0,1)
   
-def reconstruct_synthmap(ta_map,example):
+def reconstruct_synthmap(synthmap,example, mode="coordinates"):
     """
     TODO: reconstruct from multiple examples as well (third channel in ta_map)
-    """
-    return example[ta_map[:,:,1],ta_map[:,:,0]]
     
+    modes: "coordinates", "normalized"
+    """
+    if mode=="coordinates":
+        return example[synthmap[:,:,1],synthmap[:,:,0]].copy()
+    elif mode=='normalized':
+        synthmap = synthmap * (*example.shape[:2],1)
+        synthmap = synthmap.astype(int)
+        return example[synthmap[:,:,1],synthmap[:,:,0]].copy()
     
 if __name__=="__main__":
     logging.basicConfig(level=logging.INFO)
@@ -221,7 +227,7 @@ if __name__=="__main__":
     
     ta_map = ta_map2.astype(int)
     
-    conv = reconstruct_synthmap(ta_map,example)
+    conv = reconstruct_synthmap(ta_map1,example, mode="normalized")
     skimage.io.imshow_collection([ta,conv, ((ta-conv)**2)[...,:3]])
 
     #uv_info['edge_infos'][0]
