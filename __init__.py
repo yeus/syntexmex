@@ -93,9 +93,9 @@ __date__ = "2020 Feb 29th"
 
 #TODO: fill this out
 bl_info = {
-    "name": "TODO",
+    "name": "Syntexmex",
     "author": "yeus <Thomas.Meschede@web.de",
-    "version": (0, 0, 91),
+    "version": (0, 0, 3),
     "blender": (2, 82, 0),
     "location": "TODO",
     "description": "TODO",
@@ -253,6 +253,8 @@ to generate the texture""",
             else:
                 logger.info("thread seems to have finished!")
                 self.receive(context)
+                self.ta_map.pack()
+                self.target.pack()
                 self.cancel(context)
                 return {'FINISHED'}
 
@@ -298,6 +300,7 @@ class clear_target_texture(bpy.types.Operator):
         
         ta.pixels[:] = target.flatten()
         ta.update()
+        ta.pack()
         
         return {'FINISHED'}
 
@@ -491,6 +494,7 @@ class syntexmex_advanced_panel(bpy.types.Panel):
         col.label(text="debugging options:")
         col.prop(props,"advanced_debugging", text="enable advanced console logs")
 
+
 def update_debugging(self, context):
     scene = context.scene
     props = scene.syntexmexsettings
@@ -502,6 +506,7 @@ def update_debugging(self, context):
     else:
         logging.disable(logging.INFO)
     return None
+
 
 class synth_PBR_texture(bpy.types.Operator):
     """This operator synthesizes PBR textures from a synthmap
@@ -522,18 +527,50 @@ class synth_PBR_texture(bpy.types.Operator):
                     f"{self.source_material},{self.source_image}")
         
         synthmap = up.blimage2array(bpy.data.images[self.synth_map])[...,:3]
-        source_image = up.blimage2array(bpy.data.images[self.source_image])[...,:3]
-        
-        new_map = us.reconstruct_synthmap(synthmap, source_image, mode='normalized')
-        new_img = bpy.data.images.new(self.source_image,
-                                      synthmap.shape[1],synthmap.shape[0],
-                                      alpha=False,float_buffer=False)
-        
-        #add alpha channel
-        new_img.pixels[:] = np.dstack((new_map,np.ones(new_map.shape[:2]))).flatten()
+    
+        #scn = context.scene
+        obj = context.active_object
+    
+        if self.source_material is not None:
+            logger.info("create new seamless material")
+            obj.active_material = mat = bpy.data.materials[self.source_material].copy()
+
+            #duplicate texture and duplicate images inside
+            #TODO: make "original" texture permanently saved
+            imgnodes = [n for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
+            images = [up.blimage2array(n.image)[...,:3] for n in imgnodes]
+            imgnames = [n.image.name for n in imgnodes]
+            synth_images = [us.reconstruct_synthmap(synthmap,
+                                                    img, 
+                                                    mode='normalized')
+                            for img in images]
+            
+        elif self.source_image is not None:
+            images = [up.blimage2array(self.source_image)[...,:3]]
+            imgnames = [self.source_image+'seamless']
+
+            
+        for simg,node in zip(synth_images,imgnodes):
+            logger.info("processing image: {name}")
+            if node.image.colorspace_settings.name=='Non-Color': is_data=True
+            else: is_data=False
+            new_img = bpy.data.images.new(node.image.name+"seamless",
+                              synthmap.shape[1],synthmap.shape[0],
+                              alpha=False,float_buffer=node.image.is_float,
+                              is_data=is_data)
+            #add alpha channel and upload into blender
+            new_img.pixels[:] = np.dstack((simg,np.ones(simg.shape[:2]))).flatten()
+            
+            #new_img.colorspace_settings.name = node.image.colorspace_settings.name
+            node.image = new_img
+            new_img.update()
+            new_img.pack()
+            
         
         #us.reconstruct_synthmap(self.)
         return {'FINISHED'}
+
+
 
 #TODO: if we want a list o something:
 #https://sinestesia.co/blog/tutorials/using-uilists-in-blender/
