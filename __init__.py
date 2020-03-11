@@ -142,6 +142,11 @@ to generate the texture""",
         step=1
     )
     target_image: bpy.props.StringProperty()
+    target_resolution: bpy.props.IntVectorProperty(name="synth-res.",
+                                                   size=2,
+                                                   min=0,
+                                                   max=10000,
+                                                   default=(1024,1024))
     synth_tex: bpy.props.BoolProperty(name="synthesize textures")
     seamless_UVs: bpy.props.BoolProperty(name="seamless UV islands")
     libsize: bpy.props.IntProperty(name="patch library size")
@@ -150,6 +155,8 @@ to generate the texture""",
             description="Seed value for predictable texture generation",
             default = 0
             )
+    replace_material: bpy.props.BoolProperty(name="replace material",
+                                             default=False)
 
     _timer = None
 
@@ -171,6 +178,13 @@ to generate the texture""",
         logging.info(self.target_image)
         
         example_image = bpy.data.images[self.example_image]
+        if self.target_image is "":
+            self.target_image = 'synthtarget'
+            
+        bpy.data.images.new(self.target_image,
+                            self.target_resolution[0],
+                            self.target_resolution[1],
+                            alpha=False,float_buffer=True)
         self.target = bpy.data.images[self.target_image]
         
         ta_width,ta_height=self.target.size
@@ -248,13 +262,18 @@ to generate the texture""",
         if event.type == 'TIMER':
             # change theme color, silly!
             if self._thread.is_alive():
-                target = self.receive(context)
+                self.receive(context)
                 #print(".", end = '')
             else:
                 logger.info("thread seems to have finished!")
                 self.receive(context)
                 self.ta_map.pack()
                 self.target.pack()
+                if self.replace_material:
+                    bpy.ops.texture.syntexmex_pbr_texture(
+                        synth_map=self.ta_map.name, 
+                        source_material=context.scene.syntexmexsettings.source_material.name
+                        )
                 self.cancel(context)
                 return {'FINISHED'}
 
@@ -304,27 +323,14 @@ class clear_target_texture(bpy.types.Operator):
         
         return {'FINISHED'}
 
-class uvs2json(bpy.types.Operator):
-    """Save UVs as json datafile"""
-    bl_idname = "texture.uvs2json"
-    bl_label = "Save UVs to json file"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        logger.info("save UVs")
-        ta = context.scene.syntexmexsettings.target_image
-        
-        #target = np.zeros((ta.size[1], ta.size[0],4))
-        #target[...,3]=1.0
-        
-        ta.pixels[:] = target.flatten()
-        ta.update()
-        
-        return {'FINISHED'}
-
-def calc_syntexmex_info(ex_img, ta_img, props):
+def calc_syntexmex_info(ex_img, props):
     res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-    res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+    if props.target_image:
+        ta_img = props.target_image
+        res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+    else:
+        res_ta = np.array((props.target_resolution[1],
+                           props.target_resolution[0]))
     scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
     (res_patch, res_patch0,
     overlap, overlap0) = us.ts.create_patch_params2(res_ex,
@@ -355,13 +361,15 @@ class syntexmex_panel(bpy.types.Panel):
 
     def copy_to_operator(self, op, settings):
         op.example_image = settings.example_image.name
-        op.target_image = settings.target_image.name 
+        if settings.target_image:
+            op.target_image = settings.target_image.name 
         op.example_scaling = settings.example_scaling  
         op.libsize = settings.libsize 
-        op.patch_size = settings.patch_size 
+        op.patch_size = settings.patch_size
         op.synth_tex=True      
         op.seamless_UVs=True
         op.seed_value=settings.seed_value
+        op.replace_material=settings.replace_material
     
     def draw(self, context):
         layout = self.layout
@@ -371,17 +379,15 @@ class syntexmex_panel(bpy.types.Panel):
         props = scene.syntexmexsettings
 
         ex_img = props.example_image
-        ta_img = props.target_image
-        img_init=(ex_img is not None) and (ta_img is not None)
 
         #calculate algorithm properties and display some help how to set
         #it up correctly
         col2 = layout.column()
-        if img_init:
+        if ex_img:
             (res_ex,res_ta,scaling,
              res_patch, res_patch0,
              overlap, overlap0, 
-             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, ta_img, props)
+             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, props)
             if props.synth_progress > 0.0001:
                 showtext=f"synthesize texture...\npress 'ESC' to cancel."
             elif mem_reqs > maxmem:
@@ -399,8 +405,8 @@ class syntexmex_panel(bpy.types.Panel):
             else:
                 showtext="algorithm is ready..."
                 canrun=True
-        elif not img_init:
-            showtext="choose a target & example img."
+        elif not ex_img:
+            showtext="choose an example img.!"
             col2.alert=True
         elif props.synth_progress > 0.0001:
             showtext="press 'ESC' to stop texture synthesis"
@@ -413,7 +419,7 @@ class syntexmex_panel(bpy.types.Panel):
         if props.synth_progress < 0.0001: #if algorithm isnt running
             ######  algorithm start buttons for different run modes
             col3 = layout.column()
-            if img_init and canrun: col3.enabled=True
+            if ex_img and canrun: col3.enabled=True
             else: col3.enabled=False
             col2 = col3.column()
             col2.scale_y = 2.0
@@ -428,7 +434,7 @@ class syntexmex_panel(bpy.types.Panel):
             op3 = col3.operator("texture.syntexmex",
                                 text = "Make UV seams seamless")
             
-            if img_init and canrun:
+            if ex_img and canrun:
                 self.copy_to_operator(op1,props)
                 self.copy_to_operator(op2,props)
                 op2.synth_tex=True
@@ -439,8 +445,8 @@ class syntexmex_panel(bpy.types.Panel):
 
 
             #####algorithm properties
-            layout.separator(factor=2.0)                
-            layout.prop(props, "seed_value")
+            layout.separator(factor=2.0)             
+            layout.prop(props, "replace_material")
             #for prop in scene.syntexmexsettings.__annotations__.keys():
             #layout.label(text="Example Material")
             layout.prop_search(props,"source_material", bpy.data, "materials",
@@ -455,7 +461,10 @@ class syntexmex_panel(bpy.types.Panel):
             layout.prop(props, "example_scaling", text='Ex. Scaling')
             layout.prop(props, "libsize")
             #TODO: make patch_size dependend on target_texture
-            layout.prop(props, "patch_size")       
+            layout.prop(props, "patch_size")
+            layout.prop(props, "target_resolution")
+            layout.prop(props, "seed_value")
+
 
 class syntexmex_info_panel(bpy.types.Panel):
     bl_label = "Info Panel"
@@ -472,14 +481,12 @@ class syntexmex_info_panel(bpy.types.Panel):
         props = scene.syntexmexsettings
         
         ex_img = props.example_image
-        ta_img = props.target_image
-        img_init=(ex_img is not None) and (ta_img is not None)
         
-        if img_init:
+        if ex_img:
             (res_ex,res_ta,scaling,
              res_patch, res_patch0,
              overlap, overlap0, 
-             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, ta_img, props)            
+             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, props)            
             
             #layout.box()
             layout.prop(props, "synth_progress")
@@ -531,6 +538,7 @@ def update_debugging(self, context):
     else:
         logging.disable(logging.INFO)
     return None
+
 
 
 class synth_PBR_texture(bpy.types.Operator):
@@ -666,7 +674,7 @@ def get_textures_from_material(self, context):
 def update_source_image_from_enum(self, context):
     props = context.scene.syntexmexsettings
     sel_tex = props.material_textures
-    props.source_image = bpy.data.images[sel_tex]
+    props.example_image = bpy.data.images[sel_tex]
     
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
@@ -697,6 +705,11 @@ to generate the texture""",
         step=1
     )
     target_image: bpy.props.PointerProperty(name="target tex", type=bpy.types.Image)
+    target_resolution: bpy.props.IntVectorProperty(name="synth-res.",
+                                                   size=2,
+                                                   min=0,
+                                                   max=10000,
+                                                   default=(1024,1024))
     libsize: bpy.props.IntProperty(name="Library Size",
             description="defines the quality of the texture (higher=better, but needs more memory)",
             min=10*10, default = 128*128,
@@ -722,6 +735,12 @@ to generate the texture""",
             description="Enable Advanced Debugging (in console)",
             default = True,
             update = update_debugging
+            )
+    replace_material : bpy.props.BoolProperty(
+            name="repplace material",
+            description=("replace all textures in material with"
+                        "a seamless version"),
+            default=True
             )
 
 
