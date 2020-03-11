@@ -365,7 +365,7 @@ class syntexmex_panel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-        col = layout.column()
+        layout.use_property_split = True
 
         scene = context.scene
         props = scene.syntexmexsettings
@@ -376,7 +376,7 @@ class syntexmex_panel(bpy.types.Panel):
 
         #calculate algorithm properties and display some help how to set
         #it up correctly
-        col2 = col.column()
+        col2 = layout.column()
         if img_init:
             (res_ex,res_ta,scaling,
              res_patch, res_patch0,
@@ -409,10 +409,10 @@ class syntexmex_panel(bpy.types.Panel):
         col2.scale_y = 0.7
         multiline_label(col2,"> "+showtext)
         
-        col.separator(factor=2.0)
+        layout.separator(factor=2.0)
         if props.synth_progress < 0.0001: #if algorithm isnt running
             ######  algorithm start buttons for different run modes
-            col3 = col.column()
+            col3 = layout.column()
             if img_init and canrun: col3.enabled=True
             else: col3.enabled=False
             col2 = col3.column()
@@ -439,26 +439,23 @@ class syntexmex_panel(bpy.types.Panel):
 
 
             #####algorithm properties
-            col.separator(factor=2.0)                
-            col.prop(props, "seed_value")
-            col.separator(factor=2.0)
+            layout.separator(factor=2.0)                
+            layout.prop(props, "seed_value")
             #for prop in scene.syntexmexsettings.__annotations__.keys():
-            #    if prop in images:
-            col.label(text="Example Image:")
-            col.template_ID(props, "example_image", 
-                            new="image.new",open="image.open")
-            col.prop(props, "example_scaling")
-            col.prop(props, "libsize")
+            #layout.label(text="Example Material")
+            layout.prop_search(props,"source_material", bpy.data, "materials",
+                               text="Source Mat.")
+            if props.source_material:
+                layout.prop(props, "material_textures",text="Source Tex.")
+            else:    
+                layout.prop_search(props, "example_image", bpy.data, "images",
+                               text="Source Tex.")
+            #layout.prop_search(props,"example_image", props, "material_textures",
+            #                    text="Source Tex.")
+            layout.prop(props, "example_scaling", text='Ex. Scaling')
+            layout.prop(props, "libsize")
             #TODO: make patch_size dependend on target_texture
-            col.prop(props, "patch_size")
-
-
-            col.separator(factor=2.0)
-            col.label(text="Target Image:")
-            col.template_ID(props, "target_image", 
-                            new="image.new",open="image.open")
-            if (ta_img is not None):
-                col.operator("texture.clear_target_texture")              
+            layout.prop(props, "patch_size")       
 
 class syntexmex_info_panel(bpy.types.Panel):
     bl_label = "Info Panel"
@@ -567,7 +564,6 @@ class synth_PBR_texture(bpy.types.Operator):
             #TODO: make "original" texture permanently saved
             imgnodes = [n for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
             images = [up.blimage2array(n.image)[...,:3] for n in imgnodes]
-            imgnames = [n.image.name for n in imgnodes]
             synth_images = [us.reconstruct_synthmap(synthmap,
                                                     img, 
                                                     mode='normalized')
@@ -575,8 +571,6 @@ class synth_PBR_texture(bpy.types.Operator):
             
         elif self.source_image is not None:
             images = [up.blimage2array(self.source_image)[...,:3]]
-            imgnames = [self.source_image+'seamless']
-
             
         for simg,node in zip(synth_images,imgnodes):
             logger.info("processing image: {name}")
@@ -602,10 +596,9 @@ class synth_PBR_texture(bpy.types.Operator):
 
 #TODO: if we want a list o something:
 #https://sinestesia.co/blog/tutorials/using-uilists-in-blender/
-class syntexmex_pbr_panel(bpy.types.Panel):
-    """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "PBR synthesis"
-    bl_idname = "SYNTEXMEX_PT_syntexmex_pbr_panel"
+class syntexmex_texture_operations_panel(bpy.types.Panel):
+    bl_label = "texture operations"
+    bl_idname = "SYNTEXMEX_PT_syntexmex_texture_operations_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'syntexmex'
@@ -622,6 +615,11 @@ class syntexmex_pbr_panel(bpy.types.Panel):
         op = layout.operator("texture.syntexmex_pbr_texture", 
                            text = "Synthesize UV example based texture")
         
+        
+        ex_img = props.example_image
+        ta_img = props.target_image
+        img_init=(ex_img is not None) and (ta_img is not None)
+        
         if props.active_synthmap:
             op.synth_map = props.active_synthmap.name
         if props.source_material:
@@ -635,7 +633,41 @@ class syntexmex_pbr_panel(bpy.types.Panel):
         layout.prop_search(props,"source_material", bpy.data, "materials")
         layout.label(text="source image:")
         layout.template_ID(props,"source_image", open="image.open")
+        
+        
+#    if prop in images:
+        layout.label(text="Example Image:")
+        layout.template_ID(props, "example_image", open="image.open")
+        layout.prop(props, "example_scaling")
+        layout.prop(props, "libsize")
+        #TODO: make patch_size dependend on target_texture
+        layout.prop(props, "patch_size")
 
+
+        layout.separator(factor=2.0)
+        layout.label(text="Target Image:")
+        layout.template_ID(props, "target_image", 
+                        new="image.new",open="image.open")
+        if (ta_img is not None):
+            layout.operator("texture.clear_target_texture")
+
+def get_textures_from_material(self, context):
+    mat = self.source_material
+    texlist = []
+    if mat is not None:
+        for i,n in enumerate(mat.node_tree.nodes):
+            if n.type=="TEX_IMAGE":
+                texlist.append((n.image.name,n.image.name,"",i))
+                #print(f"updating images!{n.image.name},{i}")
+    return texlist
+    #images = [n.image for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
+    #return None#images
+
+def update_source_image_from_enum(self, context):
+    props = context.scene.syntexmexsettings
+    sel_tex = props.material_textures
+    props.source_image = bpy.data.images[sel_tex]
+    
 class SyntexmexSettings(bpy.types.PropertyGroup):
     #https://docs.blender.org/api/current/bpy.props.html
     synth_progress: bpy.props.FloatProperty(
@@ -651,7 +683,7 @@ class SyntexmexSettings(bpy.types.PropertyGroup):
         max=0.5,
         default=0.1,
         precision=3,
-        step=0.1
+        step=0.1,
         )
     example_image: bpy.props.PointerProperty(name="Ex.Tex.", type=bpy.types.Image)
     example_scaling: bpy.props.FloatProperty(
@@ -673,10 +705,14 @@ to generate the texture""",
     seed_value: bpy.props.IntProperty(
             name="Seed Value",
             description="Seed value for predictable texture generation",
-            default = 0
+            default = 0,
             )
     source_material : bpy.props.PointerProperty(name="source material", 
                                                 type=bpy.types.Material)
+    #material_textures : bpy.props.CollectionProperty(type=TextureList)
+    #material_textures : bpy.props.CollectionProperty(type=bpy.types.Image)
+    material_textures : bpy.props.EnumProperty(items = get_textures_from_material,
+                                               update = update_source_image_from_enum)
     source_image : bpy.props.PointerProperty(name="source image",
                                              type=bpy.types.Image)
     active_synthmap : bpy.props.PointerProperty(name="active synthmap", 
@@ -692,7 +728,7 @@ to generate the texture""",
 classes = (
     syntexmex_info_panel,
     syntexmex_panel,
-    syntexmex_pbr_panel,
+    syntexmex_texture_operations_panel,
     syntexmex_advanced_panel,
     syntexmex,
     synth_PBR_texture,
