@@ -243,6 +243,7 @@ to generate the texture""",
             else:
                 logger.info("thread seems to have finished!")
                 self.receive(context)
+                    
                 self.cancel(context)
                 return {'FINISHED'}
 
