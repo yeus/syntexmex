@@ -274,6 +274,7 @@ to generate the texture""",
                         synth_map=self.ta_map.name, 
                         source_material=context.scene.syntexmexsettings.source_material.name
                         )
+                    
                 self.cancel(context)
                 return {'FINISHED'}
 
@@ -622,7 +623,6 @@ class syntexmex_texture_operations_panel(bpy.types.Panel):
         props = scene.syntexmexsettings
         op = layout.operator("texture.syntexmex_pbr_texture", 
                            text = "Synthesize UV example based texture")
-        
         
         ex_img = props.example_image
         ta_img = props.target_image
