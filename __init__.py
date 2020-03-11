@@ -97,12 +97,12 @@ bl_info = {
     "author": "yeus <Thomas.Meschede@web.de",
     "version": (0, 0, 3),
     "blender": (2, 82, 0),
-    "location": "TODO",
-    "description": "TODO",
+    "location": "TODO View3D > Add > Mesh > Add Pipes",
+    "description": "Generate example-base seamless textures",
     "warning": "",
     "wiki_url": "http://yeus.gitlab.io",
     "category": "UV",
-    "support": "TESTING",
+    "support": "COMMUNITY",
 }
 
 #from operator import *
@@ -322,10 +322,30 @@ class uvs2json(bpy.types.Operator):
         
         return {'FINISHED'}
 
+def calc_syntexmex_info(ex_img, ta_img, props):
+    res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
+    res_ta = np.array((ta_img.size[1],ta_img.size[0]))
+    scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
+    (res_patch, res_patch0,
+    overlap, overlap0) = us.ts.create_patch_params2(res_ex,
+                                             scaling,
+                                             1/6.0, props.patch_size)
+    #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
+    #                        res_patch, ch_num, )
+    mem_reqs = 2*us.ts.calculate_memory_consumption(
+          res_ex*scaling,
+          res_patch,
+          ch_num = ex_img.channels,
+          itemsize = 8) #itemsize= 8 comes from the floatingpoint size of 8 bytes in numpy arrays
+
+    maxmem=us.ts.get_mem_limit()
+
+    return (res_ex,res_ta,scaling,res_patch, res_patch0,
+            overlap, overlap0, mem_reqs, maxmem)
+
 #TODO: ame everything according to here:
 #https://wiki.blender.org/wiki/Reference/Release_Na.otes/2.80/Python_API/Addons
 class syntexmex_panel(bpy.types.Panel):
-    """Creates a Panel in the scene context of the properties editor"""
     bl_label = "Syntexmex Configuration"
     bl_idname = "SYNTEXMEX_PT_syntexmex_panel"
     bl_space_type = 'VIEW_3D'
@@ -354,26 +374,14 @@ class syntexmex_panel(bpy.types.Panel):
         ta_img = props.target_image
         img_init=(ex_img is not None) and (ta_img is not None)
 
-        maxmem=us.ts.get_mem_limit()
-
         #calculate algorithm properties and display some help how to set
         #it up correctly
         col2 = col.column()
         if img_init:
-            res_ex = np.array((ex_img.size[1],ex_img.size[0])) * props.example_scaling
-            res_ta = np.array((ta_img.size[1],ta_img.size[0]))
-            scaling = us.ts.calc_lib_scaling(res_ex, props.libsize)
-            (res_patch, res_patch0,
-            overlap, overlap0) = us.ts.create_patch_params2(res_ex,
-                                                     scaling,
-                                                     1/6.0, props.patch_size)
-        #mem_reqs = tu.ts.check_memory_requirements2(res_ex,
-        #                        res_patch, ch_num, )
-            mem_reqs = 2*us.ts.calculate_memory_consumption(
-                  res_ex*scaling,
-                  res_patch,
-                  ch_num = ex_img.channels,
-                  itemsize = 8) #itemsize= 8 comes from the floatingpoint size of 8 bytes in numpy arrays
+            (res_ex,res_ta,scaling,
+             res_patch, res_patch0,
+             overlap, overlap0, 
+             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, ta_img, props)
             if props.synth_progress > 0.0001:
                 showtext=f"synthesize texture...\npress 'ESC' to cancel."
             elif mem_reqs > maxmem:
@@ -450,17 +458,38 @@ class syntexmex_panel(bpy.types.Panel):
             col.template_ID(props, "target_image", 
                             new="image.new",open="image.open")
             if (ta_img is not None):
-                col.operator("texture.clear_target_texture")
+                col.operator("texture.clear_target_texture")              
 
+class syntexmex_info_panel(bpy.types.Panel):
+    bl_label = "Info Panel"
+    bl_idname = "SYNTEXMEX_PT_syntexmex_info_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'syntexmex'
+    #bl_context = "tool"
+    #bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        props = scene.syntexmexsettings
+        
+        ex_img = props.example_image
+        ta_img = props.target_image
+        img_init=(ex_img is not None) and (ta_img is not None)
+        
         if img_init:
-            col.separator(factor=4.0)
-            #layout.box()
-            col2 = col.column()
-            col2.prop(props, "synth_progress")
-            col2.enabled=False
+            (res_ex,res_ta,scaling,
+             res_patch, res_patch0,
+             overlap, overlap0, 
+             mem_reqs, maxmem) = calc_syntexmex_info(ex_img, ta_img, props)            
             
-            col.label(text="Algorithm Data:")
-            b = col.box()
+            #layout.box()
+            layout.prop(props, "synth_progress")
+            layout.enabled=False
+            
+            layout.label(text="Algorithm Data:")
+            b = layout.box()
             b.scale_y = 0.3
 
             multiline_label(b,f"""memory requirements: {mem_reqs:.2f}/{maxmem:.2f} GB
@@ -471,11 +500,9 @@ synth resolution scaling: {scaling:.2f}
 patches (highres): {res_patch0[::-1]} px
 patches (lowres): {res_patch[::-1]} px
 overlap (highres): {overlap0[::-1]}
-overlap (lowres): {overlap[::-1]}""")                
-
+overlap (lowres): {overlap[::-1]}""")  
 
 class syntexmex_advanced_panel(bpy.types.Panel):
-    """Creates a Panel in the scene context of the properties editor"""
     bl_label = "Advanced Settings"
     bl_idname = "SYNTEXMEX_PT_syntexmex_advanced_panel"
     bl_space_type = 'VIEW_3D'
@@ -492,7 +519,8 @@ class syntexmex_advanced_panel(bpy.types.Panel):
         props = scene.syntexmexsettings
 
         col.label(text="debugging options:")
-        col.prop(props,"advanced_debugging", text="enable advanced console logs")
+        col.prop(props,"advanced_debugging", 
+                 text="enable advanced console logs")
 
 
 def update_debugging(self, context):
@@ -662,6 +690,7 @@ to generate the texture""",
 
 
 classes = (
+    syntexmex_info_panel,
     syntexmex_panel,
     syntexmex_pbr_panel,
     syntexmex_advanced_panel,
