@@ -47,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 #ann_library = "pynndescent"
-ann_library = "pynndescent"
+ann_library = "sklearn"
 use_pynnd, use_sklearn=False,False
 if ann_library=="pynndescent":
     import pynndescent as pynnd
@@ -548,6 +548,7 @@ def build_gaussian_pyramid(example0, min_res=8):
     #py = [im for im in py if min(im.shape[:2]) >= min_res]
     return list(reversed(py))
 
+
 def create_mask_tree(img, kind="causal5x3"):
     if kind == "causal5x3": #generate causal mask
         mask_res = (3,5)
@@ -571,6 +572,7 @@ def create_mask_tree(img, kind="causal5x3"):
     logger.info("generating tree from patches")
     index = init_ann_index(m_patches)
     return index, mask, mask_center, idx2co
+
 
 #generate image with noisy borders which later be cut off
 def local_neighbourhood_enhance(target, ex, mask, tree,
@@ -634,7 +636,9 @@ def local_neighbourhood_enhance(target, ex, mask, tree,
     return t2[image_range[0][0]: image_range[0][1],
                   image_range[1][0]: image_range[1][1]]
 
-def mask_synthesize_pixel(level, example, seed, pyramid, target = None):
+
+def mask_synthesize_pixel(level, example, seed, pyramid, 
+                          final_res,  target = None):
     img = pyramid[level]
     levelscale = img.shape[:2]/np.array(example.shape[:2])
     target_res = np.rint(final_res*levelscale).astype(int)
@@ -653,6 +657,8 @@ def mask_synthesize_pixel(level, example, seed, pyramid, target = None):
                                          initial=True, seed=seed)
     return target
 
+
+
 def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
     #TODO: choose output resolution level with a dedicated (2D-)scale-factor
     #       or a given resolution parameter (original texture will be
@@ -664,14 +670,15 @@ def pixel_synthesize_texture(final_res, scale = 1/2**3, seed = 15):
 
     tas=[] #save images for debug information
 
-    target = mask_synthesize_pixel(start_level, example, seed, py)
+    target = mask_synthesize_pixel(start_level, example, seed, py, final_res)
     tas.append(target)
     for level in range(start_level+1,len(py)):
         logger.info(f"\nstarting next level calculation: {level}\n")
-        target = mask_synthesize_pixel(level, example, seed, py, target)
+        target = mask_synthesize_pixel(level, example, seed, py, final_res, target)
         tas.append(target)
 
     return target, tas
+"""
 
 def calc_lib_scaling(res_ex, max_pixels):        
     ex_pixels = np.prod(res_ex)
