@@ -41,6 +41,7 @@ try:
     from . import tex_synthesize as ts
 except ImportError:
     import tex_synthesize as ts
+#import tex_synthesize as ts
 import pickle
 
 
