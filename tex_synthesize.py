@@ -888,8 +888,20 @@ def gen_coordinate_map(shape):
                       np.zeros(shape)),axis=2)#,axis=2)
     return grid3ch
 
+"""
 #TODO: high quality optimization
+This function doesn't work yet...
 
+the main problem is that when changing the resolution of textures
+only for single patches, we get a different result for that area
+then if we would change it for the entire texture at once. The reason
+for this are the rounding errors when going to smaller resolution
+pictures: some of the pixels of the smaller sized image will include
+the values of multiple pixels also from the neighbouring patches. if
+we decrease the resolution of only a patch, this does not happen.
+
+This
+makes it impossible to incoporate 
 @timing
 def synth_patch_tex(target0, example0, 
                     lib_size = 10000,
@@ -951,7 +963,7 @@ def synth_patch_tex(target0, example0,
            
             #skimage.io.imshow_collection([patch, co_map/(*example.shape[:2],1)])
         elif coords[0]==0: #first row
-            ovl = search_area0[:,:overlap0[1]]
+            ovl = search_area0[:,:overlap[1]]
             #ovl = skimage.transform.resize(ovl,
             #                               (res_patch[0],overlap[1]),
             #                               preserve_range=True)
@@ -977,9 +989,9 @@ def synth_patch_tex(target0, example0,
             break
 
     return target_map, target
-
-
 """
+
+
 def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     #TODO: merge this function with the "search" and the "optimal patch"
     # functionality to make it similar to the "synthesize_tex_patches" function
@@ -1011,7 +1023,7 @@ def synth_patch_tex(target, example0, k=1, patch_ratio=0.1, libsize = 256*256):
     return (target[:res_target[0],:res_target[1]], 
             ta_map[:res_target[0],:res_target[1]])
 
-"""
+
 
 @timing
 def synthesize_tex_patches(target0, example0,
