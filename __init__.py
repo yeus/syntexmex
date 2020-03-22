@@ -110,6 +110,8 @@ bl_info = {
 # TODO: remove tabs
 # https://blender.stackexchange.com/questions/97502/removing-tabs-from-tool-shelf-t-key/97503#97503
 
+synth_progress = 0.0
+
 def multiline_label(layout,text):
     for t in text.split("\n"):
         layout.label(text=t)
@@ -206,6 +208,8 @@ to generate the texture""",
         uv_info = up.prepare_uv_synth_info(*args,**kwargs)
         uv_info['seed_value']=self.seed_value
         self.algorithm_steps=self.synth_tex+len(uv_info['edge_infos']*self.seamless_UVs)
+        global synth_progress
+        synth_progress=0.01
         context.scene.syntexmexsettings.synth_progress=0.01
         self._killthread = threading.Event()
         synthtex = functools.partial(us.synthesize_textures_on_uvs,
@@ -291,6 +295,8 @@ to generate the texture""",
         if msg is not None:
             target,ta_map = msg
             self.write_images(target,ta_map)
+            global synth_progress
+            synth_progress += 1.0/self.algorithm_steps
             context.scene.syntexmexsettings.synth_progress += 1.0/self.algorithm_steps
             self._region.tag_redraw()
             self._area.tag_redraw()
@@ -299,6 +305,8 @@ to generate the texture""",
     def cancel(self, context):
         logger.info("cleaning up timer!")
         self._killthread.set()
+        global synth_progress
+        synth_progress = 0.0
         context.scene.syntexmexsettings.synth_progress=0.0
         self._region.tag_redraw()
         self._area.tag_redraw()
@@ -373,11 +381,13 @@ class syntexmex_panel(bpy.types.Panel):
         op.replace_material=settings.replace_material
     
     def draw(self, context):
+        global synth_progress
+        scene = context.scene
+        props = scene.syntexmexsettings
+        
         layout = self.layout
         layout.use_property_split = True
 
-        scene = context.scene
-        props = scene.syntexmexsettings
 
         ex_img = props.example_image
 
@@ -389,7 +399,7 @@ class syntexmex_panel(bpy.types.Panel):
              res_patch, res_patch0,
              overlap, overlap0, 
              mem_reqs, maxmem) = calc_syntexmex_info(ex_img, props)
-            if props.synth_progress > 0.0001:
+            if synth_progress > 0.0001:
                 showtext=f"synthesize texture...\npress 'ESC' to cancel."
             elif mem_reqs > maxmem:
                 showtext=f"algorithm uses too much memory: \n~{mem_reqs:.2f} GB\nmore than the available {maxmem:.2f} GB.\nMaybe close down other \nprograms to free up memory?"
@@ -409,7 +419,7 @@ class syntexmex_panel(bpy.types.Panel):
         elif not ex_img:
             showtext="choose an example img.!"
             col2.alert=True
-        elif props.synth_progress > 0.0001:
+        elif synth_progress > 0.0001:
             showtext="press 'ESC' to stop texture synthesis"
         
         #display helptext
@@ -417,7 +427,7 @@ class syntexmex_panel(bpy.types.Panel):
         multiline_label(col2,"> "+showtext)
         
         layout.separator(factor=2.0)
-        if props.synth_progress < 0.0001: #if algorithm isnt running
+        if synth_progress < 0.0001: #if algorithm isnt running
             ######  algorithm start buttons for different run modes
             col3 = layout.column()
             if ex_img and canrun: col3.enabled=True
@@ -682,7 +692,9 @@ class SyntexmexSettings(bpy.types.PropertyGroup):
         name="synthetization progress",
         description="synthetization progress",
         min=0.0,max=1.0,
-        subtype = "PERCENTAGE"
+        default=0.0,
+        subtype = "PERCENTAGE",
+        options = {'SKIP_SAVE'}
         )
     patch_size: bpy.props.FloatProperty(
         name="Patch Size Ratio",
@@ -737,7 +749,7 @@ to generate the texture""",
             update = update_debugging
             )
     replace_material : bpy.props.BoolProperty(
-            name="repplace material",
+            name="replace material",
             description=("replace all textures in material with"
                         "a seamless version"),
             default=True
@@ -747,7 +759,7 @@ to generate the texture""",
 classes = (
     syntexmex_info_panel,
     syntexmex_panel,
-    syntexmex_texture_operations_panel,
+    #TODO: enable this again: syntexmex_texture_operations_panel,
     syntexmex_advanced_panel,
     syntexmex,
     synth_PBR_texture,
@@ -755,12 +767,14 @@ classes = (
 )
 register_panel, unregister_panel = bpy.utils.register_classes_factory(classes)
 
-
 def register():
     #syntexmex_panel.register()
     bpy.utils.register_class(SyntexmexSettings)
     bpy.types.Scene.syntexmexsettings = bpy.props.PointerProperty(type=SyntexmexSettings)
     register_panel()
+    global synth_progress
+    synth_progress = 0.0
+    #TODO: initialize/deiniailize debuggin according to how the variable was set
     #init propertygroup
 
 def unregister():
