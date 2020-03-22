@@ -538,18 +538,20 @@ class syntexmex_advanced_panel(bpy.types.Panel):
                  text="enable advanced console logs")
 
 
-def update_debugging(self, context):
-    scene = context.scene
-    props = scene.syntexmexsettings
-
+def set_debugging(on=True):
     logging.basicConfig(level=logging.INFO)
-    logger.info(f"Set advanced infos to: {props.advanced_debugging}")
-    if props.advanced_debugging:
+    if on:
         logging.disable(logging.NOTSET)
     else:
         logging.disable(logging.INFO)
-    return None
 
+
+def update_debugging(self, context):
+    scene = context.scene
+    props = scene.syntexmexsettings
+    logger.info(f"Set advanced infos to: {props.advanced_debugging}")
+    set_debugging(props.advanced_debugging)
+    return None
 
 
 class synth_PBR_texture(bpy.types.Operator):
@@ -767,6 +769,16 @@ classes = (
 )
 register_panel, unregister_panel = bpy.utils.register_classes_factory(classes)
 
+@bpy.app.handlers.persistent
+def on_load(dummy):
+    print("initializing syntexmex!")
+    if bpy.data.scenes[0].syntexmexsettings.advanced_debugging:
+        print("turn on advanced debugging!")
+        set_debugging(True)
+    else:
+        print("turn off advanced debugging!")
+        set_debugging(False)
+
 def register():
     #syntexmex_panel.register()
     bpy.utils.register_class(SyntexmexSettings)
@@ -774,6 +786,8 @@ def register():
     register_panel()
     global synth_progress
     synth_progress = 0.0
+    #bpy.app.timers.register(in_5_seconds, first_interval=5)
+    bpy.app.handlers.load_post.append(on_load)
     #TODO: initialize/deiniailize debuggin according to how the variable was set
     #init propertygroup
 
