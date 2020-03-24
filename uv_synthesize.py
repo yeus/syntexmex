@@ -1,7 +1,23 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun Jan  5 13:39:03 2020
+################################################################################
+Copyright (C) 2020  Thomas Meschede a.k.a. yeus
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+################################################################################
+
 
 @author: Thomas Meschede a.k.a. yeus (yeusblender@gmail.com)
 
@@ -16,16 +32,19 @@ combines their papers into a new algorithm:
     - building a gaussian image pyramid combined with KD-Trees for
       fast searches
 
-and some more inspiration
+and some more inspiration from:
 - wfc synthesis algorithm
 
-optionally in the future:
+TODO: optionally in the future:
 - Graphcut Textures: Image and Video Synthesis Using Graph Cuts [Kwatra, Schödl]
--
-
 """
 
-import random #TODO: introduce seed value
+__author__ = "Thomas Meschede / Thomas Meschede Rose"
+__copyright__ = "Copyright (C) 2020 Thomas Rose Meschede"
+__license__ = "Proprietary"
+__version__ = "1.0"
+
+import random
 import numpy as np
 import skimage
 import skimage.io

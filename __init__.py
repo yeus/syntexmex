@@ -1,30 +1,7 @@
 """
-TODO: 
-    
-tex
-synthmex
-mesh
-example
-variation
-automatic
+Syntexmex
 
-symextex
-sytexmex
-symex
-temexa
-exmegen
-
-
-
-SynbyX syntyx
-
-gensyntex
-
-synexis -> taken
-
-current: syntexmex
-
-- plugin for texture synthesis on 3d meshes and removing edge seams
+- a plugin for texture synthesis on 3d meshes and removing edge seams
 
 Copyright (C) 2020  Thomas Meschede a.k.a. yeus
 
@@ -87,21 +64,21 @@ importlib.reload(us)
 importlib.reload(us.ts)
 
 __author__ = "yeus <Thomas.Meschede@web.de>"
-__status__ = "test"
-__version__ = "0.9"
+__status__ = "alpha"
+__version__ = "0.0.3"
 __date__ = "2020 Feb 29th"
 
 #TODO: fill this out
 bl_info = {
-    "name": "Syntexmex",
+    "name": "Syntexmex Blender",
     "author": "yeus <Thomas.Meschede@web.de",
     "version": (0, 0, 3),
     "blender": (2, 82, 0),
-    "location": "TODO View3D > Add > Mesh > Add Pipes",
-    "description": "Generate example-base seamless textures",
+    "location": "View3D > Properties > syntexmex",
+    "description": "Generate example-based seamless textures",
     "warning": "",
-    "wiki_url": "http://yeus.gitlab.io",
-    "category": "UV",
+    "wiki_url": "http://yeus.gitlab.io/syntexmex TODO",
+    "category": "View3D",
     "support": "COMMUNITY",
 }
 
@@ -594,7 +571,7 @@ class synth_PBR_texture(bpy.types.Operator):
             images = [up.blimage2array(self.source_image)[...,:3]]
             
         for simg,node in zip(synth_images,imgnodes):
-            logger.info("processing image: {name}")
+            logger.info(f"processing image: {node.image.name}")
             if node.image.colorspace_settings.name=='Non-Color': is_data=True
             else: is_data=False
             new_img = bpy.data.images.new(node.image.name+"seamless",
