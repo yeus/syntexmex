@@ -3,6 +3,12 @@
 """
 Created on Sun Jan  5 13:39:03 2020
 
+################################################################################
+# Copyright (C) Thomas Meschede - All Rights Reserved                          #
+# Unauthorized copying of this file, via any medium is strictly prohibited     #
+# Proprietary and confidential                                                 #
+################################################################################
+
 @author: Thomas Meschede a.k.a. yeus (yeusblender@gmail.com)
 
 This texture synthesis algorithm takes inspiration from three papers and
