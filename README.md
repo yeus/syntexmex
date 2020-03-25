@@ -3,7 +3,7 @@ title: Syntexmex V0.2
 subtitle: UV Texture Synthesis based on syntexmex for blender
 date: 2020-03-20
 tags: ["plugins", "blender", "texture", "PBR", "synthesis"]
-bigimg: [{src: "/piperator/scifi_rafinery.jpg", desc: "Science Fiction Raffinery"}]
+bigimg: [{src: "/doc/unwrappedhead.jpg", desc: "unwrapped head"}]
 ---
 
 Syntexmex is an addon for blender which helps generating
