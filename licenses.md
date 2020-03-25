@@ -2,7 +2,7 @@ software used:
 
 # commercial license
 
-syntexmex: proprietary
+syntexmex, this version: GPL
 
 # other licenses:
 

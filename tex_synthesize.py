@@ -4,9 +4,20 @@
 Created on Sun Jan  5 13:39:03 2020
 
 ################################################################################
-# Copyright (C) Thomas Meschede - All Rights Reserved                          #
-# Unauthorized copying of this file, via any medium is strictly prohibited     #
-# Proprietary and confidential                                                 #
+Copyright (C) 2020  Thomas Meschede a.k.a. yeus
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ################################################################################
 
 @author: Thomas Meschede a.k.a. yeus (yeusblender@gmail.com)
@@ -21,14 +32,6 @@ combines their papers into a new algorithm:
 - Real-Time Texture Synthesis by Patch-Based Sampling [Liang et al.]
     - building a gaussian image pyramid combined with KD-Trees for
       fast searches
-
-and some more inspiration
-- wfc synthesis algorithm
-
-optionally in the future:
-- Graphcut Textures: Image and Video Synthesis Using Graph Cuts [Kwatra, Schödl]
--
-
 """
 
 import random
