@@ -210,7 +210,7 @@ def reconstruct_synthmap(synthmap,example, mode="coordinates"):
     if mode=="coordinates":
         return example[synthmap[:,:,1],synthmap[:,:,0]].copy()
     elif mode=='normalized':
-        synthmap = synthmap * (*example.shape[:2],1)
+        synthmap = synthmap * (*example.shape[:2][::-1],1)
         synthmap = synthmap.astype(int)
         return example[synthmap[:,:,1],synthmap[:,:,0]].copy()
     

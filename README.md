@@ -81,15 +81,14 @@ work:
 
 https://www.blenderkit.com/get-blenderkit/bd05e68d-9775-43dc-9b65-9fda1aa8e37a/
 
-
-With Suzanne, you will get a 
+With Suzanne, you will get a alrady unwrapped UV model
 
 ### Operations
 
 <img align="right" src="docs/panel_opened.png">
 
 Synthesize UV example based texture
-:
+: Synthesize 
 
 Synthesize textures to UV islands
 :
@@ -101,25 +100,40 @@ Make UV seams seamless
 ### Parameters
 
 source material
-:
+: Choose the source material which should get used for synthesizing
+  a new material without seems on a given UV map
 
 source texture
-:
+: choose one of the textures within the material as the basis for
+  the synthesis
 
 ex. scaling
-:
+: the example texture can be scaled up /down by a factor. Use this
+  if you want to achieve a different scaling of the example texture
+  in the final result.
 
 library size
-:
+: This controls the quality of the algorithm. It defines the size of
+  the search-index that the algorithm builds. Higher values will
+  need more calculation time and memory. The quality is limited
+  by the amount of available memory on your system. Normally values
+  up to 100000 should not be a problem for most systems (~1-2GB).
 
 patch size ratio
-:
+: The algorithm stitches together patches from the original example
+  image. The size of the patches in relation to the example image
+  can be controlled with this parameter. Larger sizes tend to
+  improve the quality (although not always) and the coherence
+  of the final result.
 
 synth-res
-:
+: The resolution of the target texture. The higher this value
+  the "smaller" synthesized features will become and vice versa.
 
 seed value
-:
+: The algorithm makes use of some random internal parameters
+  this value enables an option to get different versions of a 
+  synthesized texture
 
 ### Advanced Settings
 
