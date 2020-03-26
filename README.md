@@ -9,18 +9,18 @@ bigimg: [{src: "/doc/unwrappedhead.jpg", desc: "unwrapped head"}]
 Syntexmex is an addon for blender which helps generating
 UV-textures based on examples. 
 
-taking an image like this: 
+taking an image such as this one: 
 
-<img align="right" src="https://de.m.wikipedia.org/wiki/Datei:Raspberry_Pi_B%2B_top.jpg" width=300>
+<img align="right" src="https://upload.wikimedia.org/wikipedia/commons/6/6f/Raspberry_Pi_B%2B_top.jpg" width=300>
 
 we can synthesize new texture from the example image:
 
-<img align="right" src="docs/scale_textures.png" width=300>
+<img src="docs/scale_textures.png" width=300>
 
 or make a texture seamless, also using an example image (example
 image can be the texture itself):
 
-<img align="right" src="docs/comparison.jpeg" width=300>
+<img src="docs/comparison.jpeg" width=300>
 
 <!--Below is an example what
 can be done with this addon:-->
@@ -41,7 +41,7 @@ can be done with this addon:-->
 
 Download the zip file from this location:
 
-TODO: 
+TODO:
 
 After downloading, open blender and go to:
 
@@ -84,7 +84,7 @@ inside of the blender plugin.
 The Addon can be accessed through the properties sidebar in
 3D View (Access with shortcut key: 'N') in a the *syntexmex* tab
 
-<img align="right" src="docs/default_panel.jpg" width=100>
+<img align="right" src="docs/default_panel.jpg" width=400>
 
 ### Quick introduction
 
@@ -122,9 +122,9 @@ Example of Suzanne *before* making edges seamless and *after*:
 <img src="docs/Suzanne_synthesis.png" width="300" alt="seamless">
 
 
-### Operations
+### Buttons
 
-<img align="right" src="docs/panel_opened.png" width=50>
+<img align="right" src="docs/panel_opened.png" width=200>
 
 **Synthesize UV example based texture**
 : Synthesize textures for UV islands and make edges between them seamless.
