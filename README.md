@@ -11,7 +11,7 @@ UV-textures based on examples.
 
 taking an image such as this one: 
 
-<img align="right" src="https://upload.wikimedia.org/wikipedia/commons/6/6f/Raspberry_Pi_B%2B_top.jpg" width=300>
+<img align="right" src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Raspberry_Pi_B%2B_top.jpg/640px-Raspberry_Pi_B%2B_top.jpg" width=300>
 
 we can synthesize new texture from the example image:
 
@@ -41,7 +41,7 @@ can be done with this addon:-->
 
 Download the zip file from this location:
 
-TODO:
+https://github.com/yeus/syntexmex/releases/download/v0.9-beta/syntexmex.zip
 
 After downloading, open blender and go to:
 
