@@ -11,7 +11,7 @@ UV-textures based on examples.
 
 taking an image such as this one: 
 
-<img align="right" src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Raspberry_Pi_B%2B_top.jpg/640px-Raspberry_Pi_B%2B_top.jpg" width=300>
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Raspberry_Pi_B%2B_top.jpg/640px-Raspberry_Pi_B%2B_top.jpg" width=300>
 
 we can synthesize new texture from the example image:
 
@@ -110,7 +110,7 @@ quick explanation:
   images in the textures the exact same way.
 - it replaces the other images afterwards
 
-Example of a generated synthmap for Suzanne. You can xsee the generated patches
+Example of a generated synthmap for Suzanne. You can see the generated patches
 at the borders of the UV islands. The synthmap also helps for debugging and
 finding the right parameters for the texture:
 
