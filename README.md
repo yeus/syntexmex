@@ -7,8 +7,23 @@ bigimg: [{src: "/doc/unwrappedhead.jpg", desc: "unwrapped head"}]
 ---
 
 Syntexmex is an addon for blender which helps generating
-UV-textures based on examples. Below are a couple examples what
-can be done with this addon:
+UV-textures based on examples. 
+
+taking an image like this: 
+
+<img align="right" src="https://de.m.wikipedia.org/wiki/Datei:Raspberry_Pi_B%2B_top.jpg" width=300>
+
+we can synthesize new texture from the example image:
+
+<img align="right" src="docs/scale_textures.png" width=300>
+
+or make a texture seamless, also using an example image (example
+image can be the texture itself):
+
+<img align="right" src="docs/comparison.jpeg" width=300>
+
+<!--Below is an example what
+can be done with this addon:-->
 
 <!--more-->
 
@@ -69,10 +84,11 @@ inside of the blender plugin.
 The Addon can be accessed through the properties sidebar in
 3D View (Access with shortcut key: 'N') in a the *syntexmex* tab
 
-![addon_pic](docs/default_panel.jpg)
+<img align="right" src="docs/default_panel.jpg" width=100>
 
 ### Quick introduction
 
+<!--
 In this tutorial, we chose this material here, 
 but you are free to choose any material
 you want. As long as it involves 
@@ -82,65 +98,93 @@ work:
 https://www.blenderkit.com/get-blenderkit/bd05e68d-9775-43dc-9b65-9fda1aa8e37a/
 
 With Suzanne, you will get a alrady unwrapped UV model
+-->
+
+quick explanation:
+
+- the plugin takes a copy of an existing material.
+- it generates a new image texture on UV islands
+  based on the selected images in the material.
+- it makes that image texture seamless.
+- it creates a *synthmap* which gets used to synthesize all other
+  images in the textures the exact same way.
+- it replaces the other images afterwards
+
+Example of a generated synthmap for Suzanne. You can xsee the generated patches
+at the borders of the UV islands. The synthmap also helps for debugging and
+finding the right parameters for the texture:
+
+<img src="docs/synthmap.png" width="300" alt="synthmap">
+
+Example of Suzanne *before* making edges seamless and *after*:
+
+<img src="docs/example1_1.png" width="300" alt="withseams">
+<img src="docs/Suzanne_synthesis.png" width="300" alt="seamless">
+
 
 ### Operations
 
-<img align="right" src="docs/panel_opened.png">
+<img align="right" src="docs/panel_opened.png" width=50>
 
-Synthesize UV example based texture
-: Synthesize 
+**Synthesize UV example based texture**
+: Synthesize textures for UV islands and make edges between them seamless.
 
-Synthesize textures to UV islands
-:
+**Synthesize textures to UV islands**
+: Only synthesize texture for each UV island without making edges seamless.
 
-Make UV seams seamless
-:
-
+**Make UV seams seamless**
+: Make edges between UV islands seamless.
 
 ### Parameters
 
-source material
+**source material**
 : Choose the source material which should get used for synthesizing
   a new material without seems on a given UV map
 
-source texture
+**source texture**
 : choose one of the textures within the material as the basis for
   the synthesis
 
-ex. scaling
+**ex. scaling**
 : the example texture can be scaled up /down by a factor. Use this
   if you want to achieve a different scaling of the example texture
   in the final result.
 
-library size
+**library size**
 : This controls the quality of the algorithm. It defines the size of
   the search-index that the algorithm builds. Higher values will
   need more calculation time and memory. The quality is limited
   by the amount of available memory on your system. Normally values
   up to 100000 should not be a problem for most systems (~1-2GB).
 
-patch size ratio
+**patch size ratio**
 : The algorithm stitches together patches from the original example
   image. The size of the patches in relation to the example image
   can be controlled with this parameter. Larger sizes tend to
   improve the quality (although not always) and the coherence
   of the final result.
 
-synth-res
+**synth-res**
 : The resolution of the target texture. The higher this value
   the "smaller" synthesized features will become and vice versa.
 
-seed value
+**seed value**
 : The algorithm makes use of some random internal parameters
   this value enables an option to get different versions of a 
   synthesized texture
 
 ### Advanced Settings
 
-debugging options
+**debugging options**
 : Turn detailed debugging in console on/off.
 
 ## Some hints
+
+- usually its a good idea to first make a test run with a low value
+  for library size to get a quick preview of what it might look like
+  then once you are satisfied with the patch size, example scaling etc...
+  turn library size up to the maximum value possible with the
+  available memory.
 
 - make Sure to unwrap the UVs of your model. You will want
   to make sure that there are no overlapping UVs. The same rules apply here
@@ -149,7 +193,6 @@ debugging options
   face areas. Also there should be a little gap of at least a couple pixels
   between each UV island to prevent textures from bleeding into
   other uv faces.
-
 
 - make sure when using "subdivision modifier" to put Options on "Sharp",
   because otherwise seams are going to be visible again due to the smoothing
@@ -161,5 +204,3 @@ debugging options
   
 - alorithm automatically iterates over the longer of two edges and
   writes pixels from there into the face of the shorter edge
-
-
