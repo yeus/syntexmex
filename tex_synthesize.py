@@ -1219,7 +1219,7 @@ def check_inside_face(polygon, point, tol=0.0):
         return face.contains(shapely.geometry.Point(*point))
 
 @timing
-def make_seamless_edge(edge1,edge2, target, example0, ta_map, 
+def make_seamless_edge(edge1,edge2, target, example0, ta_map,
                        patch_ratio, 
                        lib_size, debug_level=0,
                        tree_info = None):
@@ -1352,6 +1352,7 @@ def make_seamless_edge(edge1,edge2, target, example0, ta_map,
         copy_img(target_new, pa0, (xp,yp), mask_right_optimal)
         
         copy_img(ta_map, ta_pa, (xp,yp), mask_right_optimal)
+        #copy_img(target_new.copy(),)
 
         #if counter == 2:
         if False:#debug_level>0:#counter == 2:
