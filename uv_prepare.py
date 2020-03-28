@@ -491,9 +491,12 @@ def prepare_uv_synth_info(example,
             "edge_infos":list(zip(edge_infos1, edge_infos2))
             }
     
-    logger.info("saving pickle")
-    with open('uv_test_island.pickle', 'wb') as handle:
-        pickle.dump(uv_info, handle, protocol=pickle.HIGHEST_PROTOCOL)        
+    #uncomment, if picklig is needed for debugging the senthesis algorithm
+    #needs to be debugged outside of blender
+    if True: 
+        logger.info("saving pickle")
+        with open('uv_test_island.pickle', 'wb') as handle:
+            pickle.dump(uv_info, handle, protocol=pickle.HIGHEST_PROTOCOL)        
         
     return uv_info
 
