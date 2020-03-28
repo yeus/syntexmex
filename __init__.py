@@ -65,14 +65,14 @@ importlib.reload(us.ts)
 
 __author__ = "yeus <Thomas.Meschede@web.de>"
 __status__ = "alpha"
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 __date__ = "2020 Feb 29th"
 
 #TODO: fill this out
 bl_info = {
     "name": "Syntexmex Blender",
     "author": "yeus <Thomas.Meschede@web.de",
-    "version": (0, 9, 1),
+    "version": (0, 9, 2),
     "blender": (2, 82, 0),
     "location": "View3D > Properties > syntexmex",
     "description": "Generate example-based seamless textures",
@@ -168,7 +168,8 @@ to generate the texture""",
         
         ta_width,ta_height=self.target.size
         self.ta_map = bpy.data.images.new("ta_map",ta_width,ta_height,
-                                          alpha=False,float_buffer=True)
+                                          alpha=False,float_buffer=True,
+                                          is_data=True)
         #BlendDataImages.new(name, width, height, alpha=False, float_buffer=False, stereo3d=False, is_data=False, tiled=False)
         
         examplebuf, targetbuf = up.init_texture_buffers(example_image,
@@ -550,7 +551,8 @@ class synth_PBR_texture(bpy.types.Operator):
                     f"{self.source_material},{self.source_image}")
         
         synthmap = up.blimage2array(bpy.data.images[self.synth_map])[...,:3]
-    
+        mask = np.all(synthmap[:,:,:2]>=0,axis=2)
+        
         #scn = context.scene
         obj = context.active_object
     
@@ -562,10 +564,21 @@ class synth_PBR_texture(bpy.types.Operator):
             #TODO: make "original" texture permanently saved
             imgnodes = [n for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
             images = [up.blimage2array(n.image)[...,:3] for n in imgnodes]
-            synth_images = [us.normalized_synthmap(synthmap,
+            synth_images = [us.reconstruct_synthmap(synthmap,
                                                     img, 
                                                     mode='normalized')
                             for img in images]
+
+            #import ipdb; ipdb.set_trace() # BREAKPOINT
+            if not np.all(mask): #only do this if we need a masked copy
+                logger.info("copying seams to original textures")
+                scaled_images = [us.skimage.transform.resize(
+                                      img, synthmap.shape[:2])
+                                 for img in images]            
+                synth_images = [us.ts.copy_img(img,simg,mask=mask)
+                                for img, simg in zip(scaled_images,synth_images)]
+                
+
             
         #functionality not implemented right now
         #elif self.source_image is not None:
@@ -579,6 +592,7 @@ class synth_PBR_texture(bpy.types.Operator):
                               synthmap.shape[1],synthmap.shape[0],
                               alpha=False,float_buffer=node.image.is_float,
                               is_data=is_data)
+            
             #add alpha channel and upload into blender
             new_img.pixels[:] = np.dstack((simg,np.ones(simg.shape[:2]))).flatten()
             
