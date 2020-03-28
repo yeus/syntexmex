@@ -562,19 +562,20 @@ class synth_PBR_texture(bpy.types.Operator):
             #TODO: make "original" texture permanently saved
             imgnodes = [n for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
             images = [up.blimage2array(n.image)[...,:3] for n in imgnodes]
-            synth_images = [us.reconstruct_synthmap(synthmap,
+            synth_images = [us.normalized_synthmap(synthmap,
                                                     img, 
                                                     mode='normalized')
                             for img in images]
             
-        elif self.source_image is not None:
-            images = [up.blimage2array(self.source_image)[...,:3]]
+        #functionality not implemented right now
+        #elif self.source_image is not None:
+        #    images = [up.blimage2array(self.source_image)[...,:3]]
             
         for simg,node in zip(synth_images,imgnodes):
             logger.info(f"processing image: {node.image.name}")
             if node.image.colorspace_settings.name=='Non-Color': is_data=True
             else: is_data=False
-            new_img = bpy.data.images.new(node.image.name+"seamless",
+            new_img = bpy.data.images.new(node.image.name+"_synth",
                               synthmap.shape[1],synthmap.shape[0],
                               alpha=False,float_buffer=node.image.is_float,
                               is_data=is_data)

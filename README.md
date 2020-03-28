@@ -7,7 +7,7 @@ bigimg: [{src: "/doc/unwrappedhead.jpg", desc: "unwrapped head"}]
 ---
 
 Syntexmex is an addon for blender which helps generating
-UV-textures based on examples. 
+UV-textures (PBR textures work as well) based on examples. 
 
 taking an image such as this one: 
 

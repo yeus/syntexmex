@@ -97,7 +97,7 @@ def tqdm(iterator, *args, **kwargs):
 
 GB = 1.0/1024**3 #GB factor
 
-def convert_synthmap2img(synthmap, example):
+def normalized_synthmap(synthmap, example):
     return synthmap/(*example.shape[:2][::-1],1)
 
 @ts.timing
@@ -159,7 +159,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                       patch_ratio=patch_ratio, libsize = libsize,
                                       bounding_box=(ymin,xmin,ymax,xmax),
                                       mask = island_mask)
-            if msg_queue: msg_queue.put((target,convert_synthmap2img(ta_map,example)))
+            if msg_queue: msg_queue.put((target,normalized_synthmap(ta_map,example)))
 
     if stop_event.is_set(): 
         logger.info("stopping_thread")
@@ -168,7 +168,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
     if seamless_UVs:
         tree_info = None
         if ta_map is None:
-            ta_map = np.zeros([*target.shape[:2],3])
+            ta_map = np.ones([*target.shape[:2],3])*-1
         for i,(e1,e2) in enumerate(edge_infos):
             logger.info(f"making edge seamless: #{i}")
             #TODO: add pre-calculated island mask to better find "valid" uv pixels
@@ -179,7 +179,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
                                            patch_ratio, libsize, 
                                            tree_info=tree_info,
                                            debug_level=0)
-            if msg_queue: msg_queue.put((target,convert_synthmap2img(ta_map,example)))
+            if msg_queue: msg_queue.put((target,normalized_synthmap(ta_map,example)))
             if (edge_iterations != 0) and (i >= edge_iterations): break 
             if stop_event.is_set(): 
                 logger.info("stopping_thread")
@@ -188,7 +188,7 @@ def synthesize_textures_on_uvs(synth_tex=False,
         #import ipdb; ipdb.set_trace() # BREAKPOINT
         
     return (target,
-            convert_synthmap2img(ta_map,example),
+            normalized_synthmap(ta_map,example),
             ta_map)
 
 def check_face_orientation(face):
@@ -201,7 +201,7 @@ def paint_uv_dots(faces, target):
             #v=v[::-1]
             target[skimage.draw.circle(v[0],v[1],2)]=(1,0,0,1)
   
-def reconstruct_synthmap(synthmap,example, mode="coordinates"):
+def reconstruct_synthmap(synthmap,example,mode="coordinates"):
     """
     TODO: reconstruct from multiple examples as well (third channel in ta_map)
     
@@ -233,7 +233,7 @@ if __name__=="__main__":
     #paint_uv_dots(uv_info['face_uvs'],target)
     
     
-    ta, ta_map1, ta_map2 = synthesize_textures_on_uvs(synth_tex=True,
+    ta, ta_map1, ta_map2 = synthesize_textures_on_uvs(synth_tex=False,
                                         seamless_UVs=True,
                                         edge_iterations=0,
                                         **uv_info)
@@ -249,6 +249,9 @@ if __name__=="__main__":
     
     conv = reconstruct_synthmap(ta_map1,example, mode="normalized")
     skimage.io.imshow_collection([ta,conv, ((ta-conv)**2)[...,:3]])
+    mask = np.all(ta_map1[:,:,:2]>0,axis=2)
+    edge_seams = ts.copy_img(ta_map1.copy(),conv[:,:,:3],pos=(0,0),mask=mask)
+    skimage.io.imshow_collection([target,ta, edge_seams])
 
     #uv_info['edge_infos'][0]
 

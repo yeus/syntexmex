@@ -148,7 +148,7 @@ def get_mem_limit(factor=0.5):
         free_m = 2000 #MB
     return free_m * factor / 1024 #in GB
 
-def copy_img(target, src, pos, mask=None):
+def copy_img(target, src, pos=(0,0), mask=None):
     """
     copy image src to target at pos
 
