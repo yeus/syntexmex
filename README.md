@@ -41,7 +41,7 @@ can be done with this addon:-->
 
 Download the zip file from this location:
 
-https://github.com/yeus/syntexmex/releases/download/v0.9-beta/syntexmex.zip
+-> [prebuilt-packages (Linux/Windows)](https://github.com/yeus/syntexmex/releases)
 
 After downloading, open blender and go to:
 
