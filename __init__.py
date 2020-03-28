@@ -65,14 +65,14 @@ importlib.reload(us.ts)
 
 __author__ = "yeus <Thomas.Meschede@web.de>"
 __status__ = "alpha"
-__version__ = "0.0.3"
+__version__ = "0.9.1"
 __date__ = "2020 Feb 29th"
 
 #TODO: fill this out
 bl_info = {
     "name": "Syntexmex Blender",
     "author": "yeus <Thomas.Meschede@web.de",
-    "version": (0, 0, 3),
+    "version": (0, 9, 1),
     "blender": (2, 82, 0),
     "location": "View3D > Properties > syntexmex",
     "description": "Generate example-based seamless textures",
@@ -654,7 +654,8 @@ def get_textures_from_material(self, context):
     if mat is not None:
         for i,n in enumerate(mat.node_tree.nodes):
             if n.type=="TEX_IMAGE":
-                texlist.append((n.image.name,n.image.name,"",i))
+                if n.image:
+                    texlist.append((n.image.name,n.image.name,"",i))
                 #print(f"updating images!{n.image.name},{i}")
     return texlist
     #images = [n.image for n in mat.node_tree.nodes if n.type=='TEX_IMAGE']
